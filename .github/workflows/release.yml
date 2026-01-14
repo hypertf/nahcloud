@@ -42,6 +42,3 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Trigger Forge Deployment
-        run: |
-          curl -X POST "${{ secrets.FORGE_DEPLOY_URL }}" || true
