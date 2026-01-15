@@ -19,13 +19,13 @@ jobs:
         with:
           go-version: '1.23'
 
-      - name: Build Linux binary
-        run: |
-          GOOS=linux GOARCH=amd64 go build -o nahcloud-server ./cmd/server
-
       - name: Get short SHA
         id: sha
         run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build Linux binary
+        run: |
+          GOOS=linux GOARCH=amd64 go build -ldflags "-X main.Version=${{ steps.sha.outputs.short }}" -o nahcloud-server ./cmd/server
 
       - name: Delete existing release
         run: gh release delete latest --yes || true

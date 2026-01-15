@@ -75,7 +75,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	handler := api.NewHandler(svc, chaosService, config.Token)
 
 	// Setup router
-	router := api.SetupRouter(handler)
+	router := api.SetupRouter(handler, Version)
 
 	// Create HTTP server
 	server := &http.Server{

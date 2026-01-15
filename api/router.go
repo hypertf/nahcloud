@@ -1,15 +1,42 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
+	"runtime"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/hypertf/nahcloud-server/web"
 )
 
+var startTime = time.Now()
+
+// BuildInfo contains server build and runtime information
+type BuildInfo struct {
+	Version   string `json:"version"`
+	GoVersion string `json:"go_version"`
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
+	Uptime    string `json:"uptime"`
+}
+
 // SetupRouter creates and configures the HTTP router
-func SetupRouter(handler *Handler) *mux.Router {
+func SetupRouter(handler *Handler, version string) *mux.Router {
 	router := mux.NewRouter()
+
+	// Build info endpoint
+	router.HandleFunc("/buildz", func(w http.ResponseWriter, r *http.Request) {
+		info := BuildInfo{
+			Version:   version,
+			GoVersion: runtime.Version(),
+			OS:        runtime.GOOS,
+			Arch:      runtime.GOARCH,
+			Uptime:    time.Since(startTime).Round(time.Second).String(),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(info)
+	}).Methods("GET")
 
 	// Web console routes
 	webHandler := web.NewHandler(handler.service)
