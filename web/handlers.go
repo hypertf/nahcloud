@@ -317,7 +317,7 @@ func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
             <tr class="hover:bg-slate-50">
                 <td class="px-6 py-4 border-b border-slate-100 font-mono text-sm text-slate-500">{{.ID}}</td>
                 <td class="px-6 py-4 border-b border-slate-100 font-mono text-sm text-slate-500">{{.ProjectID}}</td>
-                <td class="px-6 py-4 border-b border-slate-100 font-medium">{{.Name}}</td>
+                <td class="px-6 py-4 border-b border-slate-100"><a href="#" hx-get="/web/instances/{{.ID}}/edit" hx-target="#modal-content" onclick="document.getElementById('modal').style.display='block'" class="font-medium text-[#2878B5] hover:underline">{{.Name}}</a></td>
                 <td class="px-6 py-4 border-b border-slate-100">{{.CPU}} vCPU</td>
                 <td class="px-6 py-4 border-b border-slate-100">{{.MemoryMB}} MB</td>
                 <td class="px-6 py-4 border-b border-slate-100"><code class="bg-slate-100 px-2 py-0.5 rounded text-sm">{{.Image}}</code></td>
@@ -850,22 +850,18 @@ func (h *Handler) ListStorage(w http.ResponseWriter, r *http.Request) {
         <thead>
             <tr>
                 <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">Bucket Name</th>
-                <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">Actions</th>
             </tr>
         </thead>
         <tbody>
             {{range .}}
             <tr class="hover:bg-slate-50">
                 <td class="px-6 py-4 border-b border-slate-100">
-                    <div class="flex items-center gap-3">
-                        <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <a href="#" hx-get="/web/storage/buckets/{{.Name}}/objects" hx-target="#content" class="flex items-center gap-3 text-[#2878B5] hover:underline">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
                         </svg>
                         <span class="font-medium">{{.Name}}</span>
-                    </div>
-                </td>
-                <td class="px-6 py-4 border-b border-slate-100">
-                    <button class="btn btn-secondary btn-sm" hx-get="/web/storage/buckets/{{.Name}}/objects" hx-target="#content">Browse Objects</button>
+                    </a>
                 </td>
             </tr>
             {{end}}
