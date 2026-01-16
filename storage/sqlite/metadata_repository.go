@@ -74,6 +74,28 @@ func (r *MetadataRepository) GetByID(id string) (*domain.Metadata, error) {
 	return metadata, nil
 }
 
+// GetByPath retrieves metadata by path
+func (r *MetadataRepository) GetByPath(path string) (*domain.Metadata, error) {
+	metadata := &domain.Metadata{}
+	query := `SELECT id, path, value, created_at, updated_at FROM metadata WHERE path = ?`
+
+	err := r.db.QueryRow(query, path).Scan(
+		&metadata.ID,
+		&metadata.Path,
+		&metadata.Value,
+		&metadata.CreatedAt,
+		&metadata.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, domain.NotFoundError("metadata", path)
+		}
+		return nil, fmt.Errorf("failed to get metadata by path: %w", err)
+	}
+
+	return metadata, nil
+}
+
 // Update updates existing metadata
 func (r *MetadataRepository) Update(id string, req domain.UpdateMetadataRequest) (*domain.Metadata, error) {
 	// First get the existing metadata

@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg border-none cursor-pointer transition-all duration-150;
+  }
+
+  .btn-primary {
+    @apply bg-[#2878B5] text-white shadow-sm shadow-[#2878B5]/30;
+  }
+
+  .btn-primary:hover {
+    @apply bg-[#1E6299] -translate-y-0.5 shadow-md shadow-[#2878B5]/40;
+  }
+
+  .btn-secondary {
+    @apply bg-slate-100 text-slate-700 border border-slate-200;
+  }
+
+  .btn-secondary:hover {
+    @apply bg-slate-200;
+  }
+
+  .btn-danger {
+    @apply bg-red-500 text-white;
+  }
+
+  .btn-danger:hover {
+    @apply bg-red-600;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+}

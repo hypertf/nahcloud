@@ -41,7 +41,10 @@ func SetupRouter(handler *Handler, version string) *mux.Router {
 	// Web console routes
 	webHandler := web.NewHandler(handler.service)
 	webRouter := router.PathPrefix("/web").Subrouter()
-	
+
+	// Static assets
+	webRouter.HandleFunc("/static/logo.png", webHandler.ServeLogo).Methods("GET")
+
 	// Dashboard
 	webRouter.HandleFunc("", webHandler.Dashboard).Methods("GET")
 	webRouter.HandleFunc("/", webHandler.Dashboard).Methods("GET")

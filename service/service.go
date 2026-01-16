@@ -40,6 +40,7 @@ type InstanceRepository interface {
 type MetadataRepository interface {
 	Create(req domain.CreateMetadataRequest) (*domain.Metadata, error)
 	GetByID(id string) (*domain.Metadata, error)
+	GetByPath(path string) (*domain.Metadata, error)
 	Update(id string, req domain.UpdateMetadataRequest) (*domain.Metadata, error)
 	List(opts domain.MetadataListOptions) ([]*domain.Metadata, error)
 	Delete(id string) error
@@ -379,6 +380,15 @@ func (s *Service) GetMetadata(id string) (*domain.Metadata, error) {
 	}
 
 	return s.metadataRepo.GetByID(id)
+}
+
+// GetMetadataByPath retrieves metadata by path
+func (s *Service) GetMetadataByPath(path string) (*domain.Metadata, error) {
+	if path == "" {
+		return nil, domain.InvalidInputError("metadata path cannot be empty", nil)
+	}
+
+	return s.metadataRepo.GetByPath(path)
 }
 
 // UpdateMetadata updates existing metadata
