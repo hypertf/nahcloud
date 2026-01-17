@@ -25,9 +25,9 @@ func (r *InstanceRepository) Create(instance *domain.Instance) error {
 	instance.CreatedAt = now
 	instance.UpdatedAt = now
 
-	query := `INSERT INTO instances (id, project_id, name, cpu, memory_mb, image, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	
-	_, err := r.db.Exec(query, instance.ID, instance.ProjectID, instance.Name, instance.CPU, instance.MemoryMB, instance.Image, instance.Status, instance.CreatedAt, instance.UpdatedAt)
+	query := `INSERT INTO instances (id, project_id, name, region, cpu, memory_mb, image, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	_, err := r.db.Exec(query, instance.ID, instance.ProjectID, instance.Name, instance.Region, instance.CPU, instance.MemoryMB, instance.Image, instance.Status, instance.CreatedAt, instance.UpdatedAt)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed: instances.project_id, instances.name") {
 			return domain.AlreadyExistsError("instance", "name", instance.Name)
@@ -44,12 +44,13 @@ func (r *InstanceRepository) Create(instance *domain.Instance) error {
 // GetByID retrieves an instance by ID
 func (r *InstanceRepository) GetByID(id string) (*domain.Instance, error) {
 	instance := &domain.Instance{}
-	query := `SELECT id, project_id, name, cpu, memory_mb, image, status, created_at, updated_at FROM instances WHERE id = ?`
-	
+	query := `SELECT id, project_id, name, region, cpu, memory_mb, image, status, created_at, updated_at FROM instances WHERE id = ?`
+
 	err := r.db.QueryRow(query, id).Scan(
 		&instance.ID,
 		&instance.ProjectID,
 		&instance.Name,
+		&instance.Region,
 		&instance.CPU,
 		&instance.MemoryMB,
 		&instance.Image,
@@ -71,8 +72,8 @@ func (r *InstanceRepository) GetByID(id string) (*domain.Instance, error) {
 func (r *InstanceRepository) List(opts domain.InstanceListOptions) ([]*domain.Instance, error) {
 	var instances []*domain.Instance
 	var args []interface{}
-	
-	query := `SELECT id, project_id, name, cpu, memory_mb, image, status, created_at, updated_at FROM instances`
+
+	query := `SELECT id, project_id, name, region, cpu, memory_mb, image, status, created_at, updated_at FROM instances`
 	var conditions []string
 
 	if opts.ProjectID != "" {
@@ -83,6 +84,11 @@ func (r *InstanceRepository) List(opts domain.InstanceListOptions) ([]*domain.In
 	if opts.Name != "" {
 		conditions = append(conditions, "name = ?")
 		args = append(args, opts.Name)
+	}
+
+	if opts.Region != "" {
+		conditions = append(conditions, "region = ?")
+		args = append(args, opts.Region)
 	}
 
 	if opts.Status != "" {
@@ -108,6 +114,7 @@ func (r *InstanceRepository) List(opts domain.InstanceListOptions) ([]*domain.In
 			&instance.ID,
 			&instance.ProjectID,
 			&instance.Name,
+			&instance.Region,
 			&instance.CPU,
 			&instance.MemoryMB,
 			&instance.Image,

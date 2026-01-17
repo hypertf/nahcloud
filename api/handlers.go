@@ -299,6 +299,7 @@ func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
 	opts := domain.InstanceListOptions{
 		ProjectID: r.URL.Query().Get("project_id"),
 		Name:      r.URL.Query().Get("name"),
+		Region:    r.URL.Query().Get("region"),
 		Status:    r.URL.Query().Get("status"),
 	}
 

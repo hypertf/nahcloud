@@ -22,6 +22,29 @@ func NewHandler(svc *service.Service) *Handler {
 	}
 }
 
+// renderError renders an error banner in the form (400 Bad Request)
+func (h *Handler) renderError(w http.ResponseWriter, message string) {
+	h.renderErrorWithStatus(w, message, http.StatusBadRequest)
+}
+
+// renderServerError renders an error banner for server errors (500)
+func (h *Handler) renderServerError(w http.ResponseWriter) {
+	h.renderErrorWithStatus(w, "An unexpected error occurred", http.StatusInternalServerError)
+}
+
+func (h *Handler) renderErrorWithStatus(w http.ResponseWriter, message string, status int) {
+	w.Header().Set("HX-Retarget", "#form-error")
+	w.Header().Set("HX-Reswap", "innerHTML")
+	w.WriteHeader(status)
+	html := `<div class="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+<svg class="w-4 h-4 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+</svg>
+<span class="text-sm text-red-700">` + message + `</span>
+</div>`
+	w.Write([]byte(html))
+}
+
 // ServeLogo serves the logo image
 func (h *Handler) ServeLogo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/png")
@@ -36,6 +59,20 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 <head>
     <title>NahCloud Console</title>
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.body.addEventListener('htmx:beforeSwap', function(evt) {
+                if (evt.detail.xhr.status === 400 || evt.detail.xhr.status === 500) {
+                    evt.detail.shouldSwap = true;
+                    evt.detail.isError = false;
+                    var formError = document.getElementById('form-error');
+                    if (formError) {
+                        evt.detail.target = formError;
+                    }
+                }
+            });
+        });
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -171,8 +208,9 @@ func (h *Handler) NewProjectForm(w http.ResponseWriter, r *http.Request) {
     <h3 class="text-lg font-semibold">New Project</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-post="/web/projects" hx-target="#content" hx-on::after-request="if(event.detail.successful) document.getElementById('modal').style.display='none'">
+<form hx-post="/web/projects" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
+        <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
             <label class="block text-sm font-medium mb-1.5" for="name">Project Name</label>
             <input type="text" id="name" name="name" placeholder="Enter project name" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
@@ -189,7 +227,7 @@ func (h *Handler) NewProjectForm(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.renderError(w, "Invalid form data")
 		return
 	}
 
@@ -199,7 +237,7 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 
 	_, err := h.service.CreateProject(req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.renderServerError(w)
 		return
 	}
 
@@ -221,8 +259,9 @@ func (h *Handler) EditProjectForm(w http.ResponseWriter, r *http.Request) {
     <h3 class="text-lg font-semibold">Edit Project</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-put="/web/projects/{{.ID}}" hx-target="#content" hx-on::after-request="if(event.detail.successful) document.getElementById('modal').style.display='none'">
+<form hx-put="/web/projects/{{.ID}}" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
+        <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
             <label class="block text-sm font-medium mb-1.5" for="name">Project Name</label>
             <input type="text" id="name" name="name" value="{{.Name}}" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
@@ -245,7 +284,7 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.renderError(w, "Invalid form data")
 		return
 	}
 
@@ -255,7 +294,7 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 
 	_, err := h.service.UpdateProject(id, req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.renderServerError(w)
 		return
 	}
 
@@ -305,6 +344,7 @@ func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
                 <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">ID</th>
                 <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">Project</th>
                 <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">Name</th>
+                <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">Region</th>
                 <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">CPU</th>
                 <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">Memory</th>
                 <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">Image</th>
@@ -318,6 +358,7 @@ func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
                 <td class="px-6 py-4 border-b border-slate-100 font-mono text-sm text-slate-500">{{.ID}}</td>
                 <td class="px-6 py-4 border-b border-slate-100 font-mono text-sm text-slate-500">{{.ProjectID}}</td>
                 <td class="px-6 py-4 border-b border-slate-100"><a href="#" hx-get="/web/instances/{{.ID}}/edit" hx-target="#modal-content" onclick="document.getElementById('modal').style.display='block'" class="font-medium text-[#2878B5] hover:underline">{{.Name}}</a></td>
+                <td class="px-6 py-4 border-b border-slate-100"><code class="bg-slate-100 px-2 py-0.5 rounded text-sm">{{.Region}}</code></td>
                 <td class="px-6 py-4 border-b border-slate-100">{{.CPU}} vCPU</td>
                 <td class="px-6 py-4 border-b border-slate-100">{{.MemoryMB}} MB</td>
                 <td class="px-6 py-4 border-b border-slate-100"><code class="bg-slate-100 px-2 py-0.5 rounded text-sm">{{.Image}}</code></td>
@@ -383,8 +424,9 @@ func (h *Handler) NewInstanceForm(w http.ResponseWriter, r *http.Request) {
     <h3 class="text-lg font-semibold">New Instance</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-post="/web/instances" hx-target="#content" hx-on::after-request="if(event.detail.successful) document.getElementById('modal').style.display='none'">
+<form hx-post="/web/instances" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
+        <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
             <label class="block text-sm font-medium mb-1.5" for="project_id">Project</label>
             <select id="project_id" name="project_id" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all bg-white">
@@ -398,14 +440,24 @@ func (h *Handler) NewInstanceForm(w http.ResponseWriter, r *http.Request) {
             <label class="block text-sm font-medium mb-1.5" for="name">Instance Name</label>
             <input type="text" id="name" name="name" placeholder="my-instance" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
         </div>
+        <div class="mb-5">
+            <label class="block text-sm font-medium mb-1.5" for="region">Region</label>
+            <select id="region" name="region" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all bg-white">
+                <option value="us-east-1">us-east-1</option>
+                <option value="us-west-1">us-west-1</option>
+                <option value="eu-west-1">eu-west-1</option>
+                <option value="eu-central-1">eu-central-1</option>
+                <option value="ap-east-1">ap-east-1</option>
+            </select>
+        </div>
         <div class="grid grid-cols-2 gap-4 mb-5">
             <div>
                 <label class="block text-sm font-medium mb-1.5" for="cpu">CPU (vCPU)</label>
-                <input type="number" id="cpu" name="cpu" value="1" min="1" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
+                <input type="number" id="cpu" name="cpu" value="1" min="1" max="64" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1.5" for="memory_mb">Memory (MB)</label>
-                <input type="number" id="memory_mb" name="memory_mb" value="512" min="128" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
+                <input type="number" id="memory_mb" name="memory_mb" value="512" min="1" max="524288" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
             </div>
         </div>
         <div class="mb-5">
@@ -434,25 +486,34 @@ func (h *Handler) NewInstanceForm(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.renderError(w, "Invalid form data")
 		return
 	}
 
-	cpu, _ := strconv.Atoi(r.FormValue("cpu"))
-	memoryMB, _ := strconv.Atoi(r.FormValue("memory_mb"))
+	cpu, err := strconv.Atoi(r.FormValue("cpu"))
+	if err != nil || cpu < 1 || cpu > 64 {
+		h.renderError(w, "Invalid CPU value")
+		return
+	}
+	memoryMB, err := strconv.Atoi(r.FormValue("memory_mb"))
+	if err != nil || memoryMB < 1 || memoryMB > 524288 {
+		h.renderError(w, "Invalid memory value")
+		return
+	}
 
 	req := domain.CreateInstanceRequest{
 		ProjectID: r.FormValue("project_id"),
 		Name:      r.FormValue("name"),
+		Region:    r.FormValue("region"),
 		CPU:       cpu,
 		MemoryMB:  memoryMB,
 		Image:     r.FormValue("image"),
 		Status:    r.FormValue("status"),
 	}
 
-	_, err := h.service.CreateInstance(req)
+	_, err = h.service.CreateInstance(req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.renderServerError(w)
 		return
 	}
 
@@ -480,8 +541,9 @@ func (h *Handler) EditInstanceForm(w http.ResponseWriter, r *http.Request) {
     <h3 class="text-lg font-semibold">Edit Instance</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-put="/web/instances/{{.Instance.ID}}" hx-target="#content" hx-on::after-request="if(event.detail.successful) document.getElementById('modal').style.display='none'">
+<form hx-put="/web/instances/{{.Instance.ID}}" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
+        <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
             <label class="block text-sm font-medium mb-1.5" for="project_id">Project</label>
             <select id="project_id" name="project_id" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all bg-white">
@@ -494,14 +556,19 @@ func (h *Handler) EditInstanceForm(w http.ResponseWriter, r *http.Request) {
             <label class="block text-sm font-medium mb-1.5" for="name">Instance Name</label>
             <input type="text" id="name" name="name" value="{{.Instance.Name}}" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
         </div>
+        <div class="mb-5">
+            <label class="block text-sm font-medium mb-1.5" for="region">Region</label>
+            <input type="text" id="region" value="{{.Instance.Region}}" disabled class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-500 cursor-not-allowed">
+            <p class="text-xs text-slate-400 mt-1">Region cannot be changed after creation</p>
+        </div>
         <div class="grid grid-cols-2 gap-4 mb-5">
             <div>
                 <label class="block text-sm font-medium mb-1.5" for="cpu">CPU (vCPU)</label>
-                <input type="number" id="cpu" name="cpu" value="{{.Instance.CPU}}" min="1" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
+                <input type="number" id="cpu" name="cpu" value="{{.Instance.CPU}}" min="1" max="64" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1.5" for="memory_mb">Memory (MB)</label>
-                <input type="number" id="memory_mb" name="memory_mb" value="{{.Instance.MemoryMB}}" min="128" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
+                <input type="number" id="memory_mb" name="memory_mb" value="{{.Instance.MemoryMB}}" min="1" max="524288" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
             </div>
         </div>
         <div class="mb-5">
@@ -542,15 +609,21 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.renderError(w, "Invalid form data")
 		return
 	}
 
 	name := r.FormValue("name")
-	cpuStr := r.FormValue("cpu")
-	cpu, _ := strconv.Atoi(cpuStr)
-	memoryMBStr := r.FormValue("memory_mb")
-	memoryMB, _ := strconv.Atoi(memoryMBStr)
+	cpu, err := strconv.Atoi(r.FormValue("cpu"))
+	if err != nil || cpu < 1 || cpu > 64 {
+		h.renderError(w, "Invalid CPU value")
+		return
+	}
+	memoryMB, err := strconv.Atoi(r.FormValue("memory_mb"))
+	if err != nil || memoryMB < 1 || memoryMB > 524288 {
+		h.renderError(w, "Invalid memory value")
+		return
+	}
 	image := r.FormValue("image")
 	status := r.FormValue("status")
 
@@ -562,9 +635,9 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 		Status:   &status,
 	}
 
-	_, err := h.service.UpdateInstance(id, req)
+	_, err = h.service.UpdateInstance(id, req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.renderServerError(w)
 		return
 	}
 
@@ -700,8 +773,9 @@ func (h *Handler) NewMetadataForm(w http.ResponseWriter, r *http.Request) {
     <h3 class="text-lg font-semibold">New Metadata</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-post="/web/metadata" hx-target="#content" hx-on::after-request="if(event.detail.successful) document.getElementById('modal').style.display='none'">
+<form hx-post="/web/metadata" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
+        <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
             <label class="block text-sm font-medium mb-1.5" for="path">Path</label>
             <input type="text" id="path" name="path" placeholder="config/settings/key" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
@@ -722,7 +796,7 @@ func (h *Handler) NewMetadataForm(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateMetadata(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.renderError(w, "Invalid form data")
 		return
 	}
 
@@ -730,7 +804,7 @@ func (h *Handler) CreateMetadata(w http.ResponseWriter, r *http.Request) {
 	value := r.FormValue("value")
 
 	if _, err := h.service.CreateMetadata(domain.CreateMetadataRequest{Path: path, Value: value}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.renderServerError(w)
 		return
 	}
 
@@ -755,9 +829,10 @@ func (h *Handler) EditMetadataForm(w http.ResponseWriter, r *http.Request) {
     <h3 class="text-lg font-semibold">Edit Metadata</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-put="/web/metadata/update" hx-target="#content" hx-on::after-request="if(event.detail.successful) document.getElementById('modal').style.display='none'">
+<form hx-put="/web/metadata/update" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <input type="hidden" name="id" value="{{.ID}}">
     <div class="p-6">
+        <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
             <label class="block text-sm font-medium mb-1.5" for="path">Path</label>
             <input type="text" id="path" name="path" value="{{.Path}}" readonly class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-500">
@@ -781,7 +856,7 @@ func (h *Handler) EditMetadataForm(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.renderError(w, "Invalid form data")
 		return
 	}
 
@@ -798,7 +873,7 @@ func (h *Handler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := h.service.UpdateMetadata(id, updateReq); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.renderServerError(w)
 		return
 	}
 
@@ -896,8 +971,9 @@ func (h *Handler) NewBucketForm(w http.ResponseWriter, r *http.Request) {
     <h3 class="text-lg font-semibold">New Bucket</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-post="/web/storage/buckets" hx-target="#content" hx-on::after-request="if(event.detail.successful) document.getElementById('modal').style.display='none'">
+<form hx-post="/web/storage/buckets" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
+        <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
             <label class="block text-sm font-medium mb-1.5" for="name">Bucket Name</label>
             <input type="text" id="name" name="name" placeholder="my-bucket" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
@@ -914,12 +990,12 @@ func (h *Handler) NewBucketForm(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateBucket(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.renderError(w, "Invalid form data")
 		return
 	}
 	name := r.FormValue("name")
 	if _, err := h.service.CreateBucket(domain.CreateBucketRequest{Name: name}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.renderServerError(w)
 		return
 	}
 	h.ListStorage(w, r)
@@ -1036,8 +1112,9 @@ func (h *Handler) NewObjectForm(w http.ResponseWriter, r *http.Request) {
     <h3 class="text-lg font-semibold">Upload Object to {{.Name}}</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-post="/web/storage/buckets/{{.ID}}/objects" hx-target="#content" hx-on::after-request="if(event.detail.successful) document.getElementById('modal').style.display='none'">
+<form hx-post="/web/storage/buckets/{{.ID}}/objects" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
+        <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
             <label class="block text-sm font-medium mb-1.5" for="path">Object Path</label>
             <input type="text" id="path" name="path" placeholder="folder/file.txt" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
@@ -1064,14 +1141,14 @@ func (h *Handler) CreateObject(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	bucketName := vars["name"]
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.renderError(w, "Invalid form data")
 		return
 	}
 	path := r.FormValue("path")
 	raw := r.FormValue("content_raw")
 	enc := base64.StdEncoding.EncodeToString([]byte(raw))
 	if _, err := h.service.CreateObject(domain.CreateObjectRequest{BucketID: bucketName, Path: path, Content: enc}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.renderServerError(w)
 		return
 	}
 	h.ListBucketObjects(w, r)

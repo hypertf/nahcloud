@@ -182,6 +182,22 @@ func validateInstanceStatus(status string) error {
 	return nil
 }
 
+// validateInstanceRegion validates instance region
+func validateInstanceRegion(region string) error {
+	if region == "" {
+		return domain.InvalidInputError("region is required", nil)
+	}
+	for _, validRegion := range domain.ValidRegions {
+		if region == validRegion {
+			return nil
+		}
+	}
+	return domain.InvalidInputError("invalid region", map[string]interface{}{
+		"valid_regions": domain.ValidRegions,
+		"actual":        region,
+	})
+}
+
 // validateObjectPath validates an object path
 func validateObjectPath(path string) error {
 	if path == "" {
@@ -250,6 +266,10 @@ func (s *Service) CreateInstance(req domain.CreateInstanceRequest) (*domain.Inst
 		return nil, err
 	}
 
+	if err := validateInstanceRegion(req.Region); err != nil {
+		return nil, err
+	}
+
 	if err := validateInstanceSpecs(req.CPU, req.MemoryMB, req.Image); err != nil {
 		return nil, err
 	}
@@ -280,6 +300,7 @@ func (s *Service) CreateInstance(req domain.CreateInstanceRequest) (*domain.Inst
 		ID:        id,
 		ProjectID: req.ProjectID,
 		Name:      req.Name,
+		Region:    req.Region,
 		CPU:       req.CPU,
 		MemoryMB:  req.MemoryMB,
 		Image:     req.Image,

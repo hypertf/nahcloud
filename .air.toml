@@ -1,0 +1,56 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Pre-build: rebuild Tailwind CSS if templates changed
+  pre_cmd = ["cd web && npm run build --silent"]
+
+  # Build command
+  cmd = "go build -o ./tmp/nahcloud ./cmd/server"
+
+  # Binary to run
+  bin = "./tmp/nahcloud"
+
+  # Watch these file extensions
+  include_ext = ["go", "tpl", "tmpl", "html"]
+
+  # Watch these directories
+  include_dir = ["cmd", "api", "domain", "service", "web", "pkg", "storage"]
+
+  # Exclude directories
+  exclude_dir = ["tmp", "vendor", "node_modules", "web/node_modules", "bin", ".git"]
+
+  # Exclude files
+  exclude_file = []
+
+  # Exclude regex patterns
+  exclude_regex = ["_test.go", ".*_templ.go"]
+
+  # Delay before rebuilding (ms)
+  delay = 500
+
+  # Stop running old binary before building
+  stop_on_error = true
+
+  # Send interrupt signal before killing
+  send_interrupt = true
+
+  # Delay after sending interrupt (ms)
+  kill_delay = 500
+
+[log]
+  # Log time
+  time = false
+
+  # Only show main log
+  main_only = false
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  # Delete tmp directory on exit
+  clean_on_exit = true

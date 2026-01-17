@@ -35,6 +35,13 @@ server: ## Build the NahCloud server
 
 
 ## Development
+dev: ## Run with hot-reload (requires air: go install github.com/air-verse/air@latest)
+	@which air > /dev/null || (echo "Installing air..." && go install github.com/air-verse/air@latest)
+	air
+
+dev-css: ## Watch and rebuild Tailwind CSS only
+	cd web && npm run watch
+
 run-server: ## Run the server locally
 	go run ./cmd/server
 
@@ -113,8 +120,10 @@ release-prep: clean test-all lint docs ## Prepare for release (run all checks)
 
 ## Development workflow shortcuts
 dev-setup: install-deps ## Set up development environment
+	cd web && npm install
+	cd web && npm run build
 	@echo "Development environment ready!"
-	@echo "Run 'make run-server' to start the server"
-	@echo "Test the API with curl commands"
+	@echo "Run 'make dev' to start with hot-reload"
+	@echo "Run 'make run-server' to start without hot-reload"
 
 quick-test: fmt vet test ## Quick development test cycle

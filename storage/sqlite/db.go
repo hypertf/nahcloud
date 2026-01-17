@@ -70,6 +70,7 @@ func (db *DB) initSchema() error {
 	id TEXT PRIMARY KEY,
 	project_id TEXT NOT NULL,
 	name TEXT NOT NULL,
+	region TEXT NOT NULL DEFAULT 'us-east-1',
 	cpu INTEGER NOT NULL,
 	memory_mb INTEGER NOT NULL,
 	image TEXT NOT NULL,
@@ -110,5 +111,23 @@ func (db *DB) initSchema() error {
 		}
 	}
 
+	// Run migrations for existing databases
+	if err := db.runMigrations(); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	return nil
+}
+
+// runMigrations applies schema migrations for existing databases
+func (db *DB) runMigrations() error {
+	// Add region column to instances table if it doesn't exist
+	_, err := db.Exec(`ALTER TABLE instances ADD COLUMN region TEXT NOT NULL DEFAULT 'us-east-1'`)
+	if err != nil {
+		// Ignore error if column already exists
+		if err.Error() != "duplicate column name: region" {
+			// Column might already exist, which is fine
+		}
+	}
 	return nil
 }

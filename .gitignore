@@ -3,3 +3,7 @@
 *.db-shm
 bin
 server.log
+tmp
+
+# Web dependencies (output.css is committed for go build without npm)
+web/node_modules

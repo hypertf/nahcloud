@@ -17,6 +17,7 @@ type Instance struct {
 	ID        string    `json:"id" db:"id"`
 	ProjectID string    `json:"project_id" db:"project_id"`
 	Name      string    `json:"name" db:"name"`
+	Region    string    `json:"region" db:"region"`
 	CPU       int       `json:"cpu" db:"cpu"`
 	MemoryMB  int       `json:"memory_mb" db:"memory_mb"`
 	Image     string    `json:"image" db:"image"`
@@ -30,6 +31,24 @@ const (
 	StatusRunning = "running"
 	StatusStopped = "stopped"
 )
+
+// Region constants
+const (
+	RegionUSEast1    = "us-east-1"
+	RegionUSWest1    = "us-west-1"
+	RegionEUWest1    = "eu-west-1"
+	RegionEUCentral1 = "eu-central-1"
+	RegionAPEast1    = "ap-east-1"
+)
+
+// ValidRegions is the list of allowed regions
+var ValidRegions = []string{
+	RegionUSEast1,
+	RegionUSWest1,
+	RegionEUWest1,
+	RegionEUCentral1,
+	RegionAPEast1,
+}
 
 // Metadata represents key-value metadata storage
 type Metadata struct {
@@ -90,6 +109,7 @@ type UpdateProjectRequest struct {
 type CreateInstanceRequest struct {
 	ProjectID string `json:"project_id"`
 	Name      string `json:"name"`
+	Region    string `json:"region"`
 	CPU       int    `json:"cpu"`
 	MemoryMB  int    `json:"memory_mb"`
 	Image     string `json:"image"`
@@ -114,6 +134,7 @@ type ProjectListOptions struct {
 type InstanceListOptions struct {
 	ProjectID string
 	Name      string
+	Region    string
 	Status    string
 }
 
