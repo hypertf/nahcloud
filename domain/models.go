@@ -5,6 +5,7 @@ import (
 )
 
 // Organization represents a top-level organization in the NahCloud system
+// TODO: Consider consolidating ID and Slug into a single identifier (both are strings)
 type Organization struct {
 	ID        string    `json:"id" db:"id"`
 	Slug      string    `json:"slug" db:"slug"` // URL-safe identifier (like GCP project ID)

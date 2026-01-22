@@ -48,9 +48,6 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 	} else if domain.IsUnauthorized(err) {
 		status = http.StatusUnauthorized
 		message = err.Error()
-	} else if domain.IsServiceUnavailable(err) {
-		status = http.StatusServiceUnavailable
-		message = err.Error()
 	}
 
 	w.Header().Set("Content-Type", "application/json")

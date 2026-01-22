@@ -10,9 +10,8 @@ const (
 	ErrorCodeAlreadyExists      = "ALREADY_EXISTS"
 	ErrorCodeInvalidInput       = "INVALID_INPUT"
 	ErrorCodeForeignKeyViolation = "FOREIGN_KEY_VIOLATION"
-	ErrorCodeInternalError      = "INTERNAL_ERROR"
-	ErrorCodeUnauthorized       = "UNAUTHORIZED"
-	ErrorCodeServiceUnavailable = "SERVICE_UNAVAILABLE"
+	ErrorCodeInternalError = "INTERNAL_ERROR"
+	ErrorCodeUnauthorized  = "UNAUTHORIZED"
 )
 
 // NahError represents a domain error with structured information
@@ -80,11 +79,6 @@ func UnauthorizedError(message string) *NahError {
 	return NewError(ErrorCodeUnauthorized, message)
 }
 
-// ServiceUnavailableError creates a service unavailable error
-func ServiceUnavailableError(message string) *NahError {
-	return NewError(ErrorCodeServiceUnavailable, message)
-}
-
 // IsNotFound checks if error is a not found error
 func IsNotFound(err error) bool {
 	if nahErr, ok := err.(*NahError); ok {
@@ -121,14 +115,6 @@ func IsInvalidInput(err error) bool {
 func IsUnauthorized(err error) bool {
 	if nahErr, ok := err.(*NahError); ok {
 		return nahErr.Code == ErrorCodeUnauthorized
-	}
-	return false
-}
-
-// IsServiceUnavailable checks if error is a service unavailable error
-func IsServiceUnavailable(err error) bool {
-	if nahErr, ok := err.(*NahError); ok {
-		return nahErr.Code == ErrorCodeServiceUnavailable
 	}
 	return false
 }
