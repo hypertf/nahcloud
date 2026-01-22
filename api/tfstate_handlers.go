@@ -11,10 +11,6 @@ import (
 
 // TFStateGet handles GET /v1/tfstate/{state_id}
 func (h *Handler) TFStateGet(w http.ResponseWriter, r *http.Request) {
-	if err := h.authenticate(r); err != nil {
-		h.writeError(w, err)
-		return
-	}
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -34,10 +30,6 @@ func (h *Handler) TFStateGet(w http.ResponseWriter, r *http.Request) {
 
 // TFStatePost handles POST /v1/tfstate/{state_id}
 func (h *Handler) TFStatePost(w http.ResponseWriter, r *http.Request) {
-	if err := h.authenticate(r); err != nil {
-		h.writeError(w, err)
-		return
-	}
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -66,10 +58,6 @@ func (h *Handler) TFStatePost(w http.ResponseWriter, r *http.Request) {
 
 // TFStateDelete handles DELETE /v1/tfstate/{state_id}
 func (h *Handler) TFStateDelete(w http.ResponseWriter, r *http.Request) {
-	if err := h.authenticate(r); err != nil {
-		h.writeError(w, err)
-		return
-	}
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -93,10 +81,6 @@ func (h *Handler) TFStateDelete(w http.ResponseWriter, r *http.Request) {
 
 // TFStateLock handles LOCK /v1/tfstate/{state_id}
 func (h *Handler) TFStateLock(w http.ResponseWriter, r *http.Request) {
-	if err := h.authenticate(r); err != nil {
-		h.writeError(w, err)
-		return
-	}
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -129,10 +113,6 @@ func (h *Handler) TFStateLock(w http.ResponseWriter, r *http.Request) {
 
 // TFStateUnlock handles UNLOCK /v1/tfstate/{state_id}
 func (h *Handler) TFStateUnlock(w http.ResponseWriter, r *http.Request) {
-	if err := h.authenticate(r); err != nil {
-		h.writeError(w, err)
-		return
-	}
 	vars := mux.Vars(r)
 	id := vars["id"]
 

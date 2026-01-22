@@ -4,9 +4,48 @@ import (
 	"time"
 )
 
+// Organization represents a top-level organization in the NahCloud system
+// TODO: Consider consolidating ID and Slug into a single identifier (both are strings)
+type Organization struct {
+	ID        string    `json:"id" db:"id"`
+	Slug      string    `json:"slug" db:"slug"` // URL-safe identifier (like GCP project ID)
+	Name      string    `json:"name" db:"name"` // Human-readable display name
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// APIKey represents an API key tied to an organization
+type APIKey struct {
+	ID         string     `json:"id" db:"id"`
+	OrgID      string     `json:"org_id" db:"org_id"`
+	Name       string     `json:"name" db:"name"`
+	TokenHash  string     `json:"-" db:"token_hash"` // SHA-256 hash, never exposed
+	CreatedAt  time.Time  `json:"created_at" db:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty" db:"last_used_at"`
+}
+
+// APIKeyWithToken is returned only on key creation (contains plaintext token)
+type APIKeyWithToken struct {
+	APIKey
+	Token string `json:"token"` // Plaintext token, shown only once
+}
+
+// OrganizationWithAPIKey is returned on org creation (includes the initial API key)
+type OrganizationWithAPIKey struct {
+	Organization
+	APIKey APIKeyWithToken `json:"api_key"`
+}
+
+// CreateAPIKeyRequest represents the request to create an API key
+type CreateAPIKeyRequest struct {
+	Name string `json:"name"`
+}
+
 // Project represents a project in the NahCloud system
 type Project struct {
 	ID        string    `json:"id" db:"id"`
+	OrgID     string    `json:"org_id" db:"org_id"`
+	Slug      string    `json:"slug" db:"slug"`
 	Name      string    `json:"name" db:"name"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
@@ -50,22 +89,23 @@ var ValidRegions = []string{
 	RegionAPEast1,
 }
 
-// Metadata represents key-value metadata storage
+// Metadata represents key-value metadata storage (org-scoped)
 type Metadata struct {
 	ID        string    `json:"id" db:"id"`
+	OrgID     string    `json:"org_id" db:"org_id"`
 	Path      string    `json:"path" db:"path"`
 	Value     string    `json:"value" db:"value"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
-// Bucket represents a storage bucket
+// Bucket represents a storage bucket (project-scoped)
 // Buckets are logical containers for objects
-// Only a name and timestamps are tracked
-// Name must be unique
+// Name must be unique within a project
 // Objects reference buckets by ID
 type Bucket struct {
 	ID        string    `json:"id" db:"id"`
+	ProjectID string    `json:"project_id" db:"project_id"`
 	Name      string    `json:"name" db:"name"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
@@ -86,23 +126,42 @@ type Object struct {
 // Keys are capitalized to match Terraform's expected JSON schema
 // See: https://developer.hashicorp.com/terraform/language/state/locking#http-endpoints
 type TFStateLock struct {
-	ID       string    `json:"ID"`
-	Operation string   `json:"Operation,omitempty"`
-	Info      string   `json:"Info,omitempty"`
-	Who       string   `json:"Who,omitempty"`
-	Version   string   `json:"Version,omitempty"`
+	ID        string    `json:"ID"`
+	Operation string    `json:"Operation,omitempty"`
+	Info      string    `json:"Info,omitempty"`
+	Who       string    `json:"Who,omitempty"`
+	Version   string    `json:"Version,omitempty"`
 	Created   time.Time `json:"Created,omitempty"`
-	Path      string   `json:"Path,omitempty"`
+	Path      string    `json:"Path,omitempty"`
+}
+
+// Organization request/response types
+
+// CreateOrganizationRequest represents the request to create an organization
+type CreateOrganizationRequest struct {
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+}
+
+// UpdateOrganizationRequest represents the request to update an organization
+type UpdateOrganizationRequest struct {
+	Name *string `json:"name,omitempty"`
+}
+
+// OrganizationListOptions represents query options for listing organizations
+type OrganizationListOptions struct {
+	Slug string
 }
 
 // CreateProjectRequest represents the request to create a project
 type CreateProjectRequest struct {
+	Slug string `json:"slug"`
 	Name string `json:"name"`
 }
 
 // UpdateProjectRequest represents the request to update a project
 type UpdateProjectRequest struct {
-	Name string `json:"name"`
+	Name *string `json:"name,omitempty"`
 }
 
 // CreateInstanceRequest represents the request to create an instance
@@ -127,7 +186,9 @@ type UpdateInstanceRequest struct {
 
 // ProjectListOptions represents query options for listing projects
 type ProjectListOptions struct {
-	Name string
+	OrgID string
+	Slug  string
+	Name  string
 }
 
 // InstanceListOptions represents query options for listing instances
@@ -140,6 +201,7 @@ type InstanceListOptions struct {
 
 // CreateMetadataRequest represents the request to create metadata
 type CreateMetadataRequest struct {
+	OrgID string `json:"org_id"`
 	Path  string `json:"path"`
 	Value string `json:"value"`
 }
@@ -152,12 +214,14 @@ type UpdateMetadataRequest struct {
 
 // MetadataListOptions represents query options for listing metadata
 type MetadataListOptions struct {
+	OrgID  string
 	Prefix string
 }
 
 // CreateBucketRequest represents the request to create a bucket
 type CreateBucketRequest struct {
-	Name string `json:"name"`
+	ProjectID string `json:"project_id"`
+	Name      string `json:"name"`
 }
 
 // UpdateBucketRequest represents the request to update a bucket
@@ -167,7 +231,8 @@ type UpdateBucketRequest struct {
 
 // BucketListOptions represents query options for listing buckets
 type BucketListOptions struct {
-	Name string
+	ProjectID string
+	Name      string
 }
 
 // CreateObjectRequest represents the request to create an object

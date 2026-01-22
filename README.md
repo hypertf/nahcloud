@@ -19,7 +19,6 @@ NahCloud gives you a local cloud-shaped API that accepts your requests, stores s
 **NahCloud** is a generic fake cloud with simple, predictable resources. It's for testing:
 - Terraform provider development
 - CI/CD pipeline logic
-- Retry and error handling (via chaos engineering)
 - State backend behavior
 
 ## Features
@@ -35,31 +34,6 @@ NahCloud implements the Terraform HTTP state backend protocol:
 - `GET/POST/DELETE /v1/tfstate/{id}` - state operations
 - `LOCK/UNLOCK /v1/tfstate/{id}` - state locking
 
-### Chaos Engineering
-Inject failures to test how your tooling handles a misbehaving API:
-
-```bash
-# Enable chaos mode
-NAH_CHAOS_ENABLED=true
-
-# Add latency (min-max milliseconds)
-NAH_LATENCY_GLOBAL_MS=10-100
-NAH_LATENCY_PROJECTS_MS=50-200
-
-# Inject errors (0.0 to 1.0)
-NAH_ERRRATE_PROJECTS=0.1      # 10% of project calls fail
-NAH_ERRRATE_INSTANCES=0.05
-NAH_ERRRATE_METADATA=0.05
-
-# Error types and weights
-NAH_ERROR_TYPES=503,500,429   # which errors to return
-NAH_ERROR_WEIGHTS=3,2,1       # relative frequency
-```
-
-Bypass chaos per-request with headers:
-- `X-Nah-No-Chaos: true` - skip all chaos
-- `X-Nah-Latency: 50` - force specific latency (ms)
-
 ### Web Console
 Browse and manage resources at `http://localhost:8080/web/`
 
@@ -68,9 +42,6 @@ Browse and manage resources at `http://localhost:8080/web/`
 ```bash
 # Run the server
 make run-server
-
-# Or with chaos enabled
-make run-server-with-chaos
 ```
 
 The API is available at `http://localhost:8080/v1/`
@@ -80,8 +51,60 @@ The API is available at `http://localhost:8080/v1/`
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NAH_HTTP_ADDR` | `:8080` | Server listen address |
-| `NAH_TOKEN` | (none) | Bearer token for auth (optional) |
 | `NAH_SQLITE_DSN` | `file:nah.db?...` | SQLite connection string |
+
+## Authentication
+
+NahCloud uses **API key authentication**. Each organization gets an API key when created, and you can create additional keys.
+
+### Create an org (public endpoint)
+```bash
+curl -X POST http://localhost:8080/v1/orgs \
+  -H "Content-Type: application/json" \
+  -d '{"slug": "my-org", "name": "My Organization"}'
+```
+
+Response includes the org and an initial API key:
+```json
+{
+  "id": "abc123...",
+  "slug": "my-org",
+  "name": "My Organization",
+  "api_key": {
+    "id": "def456...",
+    "name": "default",
+    "token": "nah_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+}
+```
+
+**Save this token!** It's only shown once.
+
+### Use the API key
+All other API calls require an API key:
+```bash
+curl http://localhost:8080/v1/orgs/my-org/projects \
+  -H "Authorization: Bearer nah_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+The API key only grants access to its own org's resources.
+
+### Manage API keys
+```bash
+# Create additional key
+curl -X POST http://localhost:8080/v1/orgs/my-org/api-keys \
+  -H "Authorization: Bearer nah_api_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ci-pipeline"}'
+
+# List keys
+curl http://localhost:8080/v1/orgs/my-org/api-keys \
+  -H "Authorization: Bearer nah_api_xxx"
+
+# Delete a key
+curl -X DELETE http://localhost:8080/v1/orgs/my-org/api-keys/{key_id} \
+  -H "Authorization: Bearer nah_api_xxx"
+```
 
 ## API Overview
 
