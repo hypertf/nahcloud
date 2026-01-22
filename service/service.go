@@ -2,14 +2,18 @@ package service
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"regexp"
 
 	"github.com/hypertf/nahcloud/domain"
+	"github.com/hypertf/nahcloud/pkg/endec"
 )
 
 // Service provides business logic for NahCloud operations
 type Service struct {
+	orgRepo      OrganizationRepository
+	apiKeyRepo   APIKeyRepository
 	projectRepo  ProjectRepository
 	instanceRepo InstanceRepository
 	metadataRepo MetadataRepository
@@ -17,10 +21,31 @@ type Service struct {
 	objectRepo   ObjectRepository
 }
 
+// OrganizationRepository defines the interface for organization data operations
+type OrganizationRepository interface {
+	Create(org *domain.Organization) error
+	GetByID(id string) (*domain.Organization, error)
+	GetBySlug(slug string) (*domain.Organization, error)
+	List(opts domain.OrganizationListOptions) ([]*domain.Organization, error)
+	Update(id string, req domain.UpdateOrganizationRequest) (*domain.Organization, error)
+	Delete(id string) error
+}
+
+// APIKeyRepository defines the interface for API key data operations
+type APIKeyRepository interface {
+	Create(key *domain.APIKey) error
+	GetByID(id string) (*domain.APIKey, error)
+	GetByTokenHash(tokenHash string) (*domain.APIKey, error)
+	ListByOrgID(orgID string) ([]*domain.APIKey, error)
+	UpdateLastUsed(id string) error
+	Delete(id string) error
+}
+
 // ProjectRepository defines the interface for project data operations
 type ProjectRepository interface {
 	Create(project *domain.Project) error
 	GetByID(id string) (*domain.Project, error)
+	GetBySlug(orgID, slug string) (*domain.Project, error)
 	GetByName(name string) (*domain.Project, error)
 	List(opts domain.ProjectListOptions) ([]*domain.Project, error)
 	Update(id string, req domain.UpdateProjectRequest) (*domain.Project, error)
@@ -40,7 +65,7 @@ type InstanceRepository interface {
 type MetadataRepository interface {
 	Create(req domain.CreateMetadataRequest) (*domain.Metadata, error)
 	GetByID(id string) (*domain.Metadata, error)
-	GetByPath(path string) (*domain.Metadata, error)
+	GetByPath(orgID, path string) (*domain.Metadata, error)
 	Update(id string, req domain.UpdateMetadataRequest) (*domain.Metadata, error)
 	List(opts domain.MetadataListOptions) ([]*domain.Metadata, error)
 	Delete(id string) error
@@ -50,7 +75,7 @@ type MetadataRepository interface {
 type BucketRepository interface {
 	Create(bucket *domain.Bucket) error
 	GetByID(id string) (*domain.Bucket, error)
-	GetByName(name string) (*domain.Bucket, error)
+	GetByName(projectID, name string) (*domain.Bucket, error)
 	List(opts domain.BucketListOptions) ([]*domain.Bucket, error)
 	Update(id string, req domain.UpdateBucketRequest) (*domain.Bucket, error)
 	Delete(id string) error
@@ -66,8 +91,10 @@ type ObjectRepository interface {
 }
 
 // NewService creates a new service instance
-func NewService(projectRepo ProjectRepository, instanceRepo InstanceRepository, metadataRepo MetadataRepository, bucketRepo BucketRepository, objectRepo ObjectRepository) *Service {
+func NewService(orgRepo OrganizationRepository, apiKeyRepo APIKeyRepository, projectRepo ProjectRepository, instanceRepo InstanceRepository, metadataRepo MetadataRepository, bucketRepo BucketRepository, objectRepo ObjectRepository) *Service {
 	return &Service{
+		orgRepo:      orgRepo,
+		apiKeyRepo:   apiKeyRepo,
 		projectRepo:  projectRepo,
 		instanceRepo: instanceRepo,
 		metadataRepo: metadataRepo,
@@ -83,6 +110,38 @@ func generateID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+// validateSlug validates a slug (used for org and project slugs)
+func validateSlug(slug string) error {
+	if slug == "" {
+		return domain.InvalidInputError("slug cannot be empty", nil)
+	}
+	if len(slug) > 63 {
+		return domain.InvalidInputError("slug too long", map[string]interface{}{
+			"max_length": 63,
+			"actual":     len(slug),
+		})
+	}
+	// Slug must be lowercase alphanumeric with dashes, starting with a letter
+	if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(slug) {
+		return domain.InvalidInputError("slug must start with a lowercase letter and contain only lowercase letters, numbers, and dashes", nil)
+	}
+	return nil
+}
+
+// validateName validates a resource name
+func validateName(name string, resourceType string) error {
+	if name == "" {
+		return domain.InvalidInputError(resourceType+" name cannot be empty", nil)
+	}
+	if len(name) > 255 {
+		return domain.InvalidInputError(resourceType+" name too long", map[string]interface{}{
+			"max_length": 255,
+			"actual":     len(name),
+		})
+	}
+	return nil
 }
 
 // validateProjectName validates a project name
@@ -209,11 +268,187 @@ func validateObjectPath(path string) error {
 	return nil
 }
 
+// Organization operations
+
+// hashToken returns the SHA-256 hash of a token as a hex string
+func hashToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
+
+// CreateOrganization creates a new organization with an initial API key
+func (s *Service) CreateOrganization(req domain.CreateOrganizationRequest) (*domain.OrganizationWithAPIKey, error) {
+	if err := validateSlug(req.Slug); err != nil {
+		return nil, err
+	}
+	if err := validateName(req.Name, "organization"); err != nil {
+		return nil, err
+	}
+
+	orgID, err := generateID()
+	if err != nil {
+		return nil, domain.InternalError("failed to generate org ID")
+	}
+
+	org := &domain.Organization{
+		ID:   orgID,
+		Slug: req.Slug,
+		Name: req.Name,
+	}
+
+	if err := s.orgRepo.Create(org); err != nil {
+		return nil, err
+	}
+
+	// Create initial API key for the org
+	apiKeyWithToken, err := s.createAPIKey(orgID, "default")
+	if err != nil {
+		// Rollback org creation on API key failure
+		s.orgRepo.Delete(orgID)
+		return nil, err
+	}
+
+	return &domain.OrganizationWithAPIKey{
+		Organization: *org,
+		APIKey:       *apiKeyWithToken,
+	}, nil
+}
+
+// GetOrganization retrieves an organization by ID
+func (s *Service) GetOrganization(id string) (*domain.Organization, error) {
+	return s.orgRepo.GetByID(id)
+}
+
+// GetOrganizationBySlug retrieves an organization by slug
+func (s *Service) GetOrganizationBySlug(slug string) (*domain.Organization, error) {
+	return s.orgRepo.GetBySlug(slug)
+}
+
+// GetOrganizationByToken retrieves an organization by validating the provided API key token
+func (s *Service) GetOrganizationByToken(token string) (*domain.Organization, error) {
+	// Validate token format (must be an API key)
+	if _, err := endec.ValidateToken(token, endec.PrefixAPI); err != nil {
+		return nil, domain.UnauthorizedError("invalid token format")
+	}
+
+	apiKey, err := s.apiKeyRepo.GetByTokenHash(hashToken(token))
+	if err != nil {
+		if domain.IsNotFound(err) {
+			return nil, domain.UnauthorizedError("invalid token")
+		}
+		return nil, err
+	}
+
+	// Update last used timestamp (fire and forget)
+	go s.apiKeyRepo.UpdateLastUsed(apiKey.ID)
+
+	return s.orgRepo.GetByID(apiKey.OrgID)
+}
+
+// ListOrganizations lists organizations with optional filtering
+func (s *Service) ListOrganizations(opts domain.OrganizationListOptions) ([]*domain.Organization, error) {
+	return s.orgRepo.List(opts)
+}
+
+// UpdateOrganization updates an existing organization
+func (s *Service) UpdateOrganization(id string, req domain.UpdateOrganizationRequest) (*domain.Organization, error) {
+	if req.Name != nil {
+		if err := validateName(*req.Name, "organization"); err != nil {
+			return nil, err
+		}
+	}
+
+	return s.orgRepo.Update(id, req)
+}
+
+// DeleteOrganization deletes an organization
+func (s *Service) DeleteOrganization(id string) error {
+	return s.orgRepo.Delete(id)
+}
+
+// API Key operations
+
+// createAPIKey is an internal helper to create an API key
+func (s *Service) createAPIKey(orgID, name string) (*domain.APIKeyWithToken, error) {
+	keyID, err := generateID()
+	if err != nil {
+		return nil, domain.InternalError("failed to generate API key ID")
+	}
+
+	// Generate API token (24 bytes = 192 bits of entropy)
+	token, err := endec.CreateToken(endec.PrefixAPI, 24)
+	if err != nil {
+		return nil, domain.InternalError("failed to generate token")
+	}
+
+	apiKey := &domain.APIKey{
+		ID:        keyID,
+		OrgID:     orgID,
+		Name:      name,
+		TokenHash: hashToken(token),
+	}
+
+	if err := s.apiKeyRepo.Create(apiKey); err != nil {
+		return nil, err
+	}
+
+	return &domain.APIKeyWithToken{
+		APIKey: *apiKey,
+		Token:  token,
+	}, nil
+}
+
+// CreateAPIKey creates a new API key for an organization
+func (s *Service) CreateAPIKey(orgID string, req domain.CreateAPIKeyRequest) (*domain.APIKeyWithToken, error) {
+	// Verify organization exists
+	if _, err := s.orgRepo.GetByID(orgID); err != nil {
+		return nil, err
+	}
+
+	name := req.Name
+	if name == "" {
+		name = "unnamed"
+	}
+
+	return s.createAPIKey(orgID, name)
+}
+
+// ListAPIKeys lists all API keys for an organization
+func (s *Service) ListAPIKeys(orgID string) ([]*domain.APIKey, error) {
+	return s.apiKeyRepo.ListByOrgID(orgID)
+}
+
+// DeleteAPIKey deletes an API key
+func (s *Service) DeleteAPIKey(orgID, keyID string) error {
+	// Verify the key belongs to the org
+	key, err := s.apiKeyRepo.GetByID(keyID)
+	if err != nil {
+		return err
+	}
+	if key.OrgID != orgID {
+		return domain.NotFoundError("api_key", keyID)
+	}
+
+	return s.apiKeyRepo.Delete(keyID)
+}
+
 // Project operations
 
-// CreateProject creates a new project
-func (s *Service) CreateProject(req domain.CreateProjectRequest) (*domain.Project, error) {
-	if err := validateProjectName(req.Name); err != nil {
+// CreateProject creates a new project within an organization
+func (s *Service) CreateProject(orgID string, req domain.CreateProjectRequest) (*domain.Project, error) {
+	if err := validateSlug(req.Slug); err != nil {
+		return nil, err
+	}
+	if err := validateName(req.Name, "project"); err != nil {
+		return nil, err
+	}
+
+	// Verify organization exists
+	_, err := s.orgRepo.GetByID(orgID)
+	if err != nil {
+		if domain.IsNotFound(err) {
+			return nil, domain.ForeignKeyViolationError("organization", "id", orgID)
+		}
 		return nil, err
 	}
 
@@ -223,8 +458,10 @@ func (s *Service) CreateProject(req domain.CreateProjectRequest) (*domain.Projec
 	}
 
 	project := &domain.Project{
-		ID:   id,
-		Name: req.Name,
+		ID:    id,
+		OrgID: orgID,
+		Slug:  req.Slug,
+		Name:  req.Name,
 	}
 
 	if err := s.projectRepo.Create(project); err != nil {
@@ -239,6 +476,11 @@ func (s *Service) GetProject(id string) (*domain.Project, error) {
 	return s.projectRepo.GetByID(id)
 }
 
+// GetProjectBySlug retrieves a project by org ID and slug
+func (s *Service) GetProjectBySlug(orgID, slug string) (*domain.Project, error) {
+	return s.projectRepo.GetBySlug(orgID, slug)
+}
+
 // ListProjects lists projects with optional filtering
 func (s *Service) ListProjects(opts domain.ProjectListOptions) ([]*domain.Project, error) {
 	return s.projectRepo.List(opts)
@@ -246,8 +488,10 @@ func (s *Service) ListProjects(opts domain.ProjectListOptions) ([]*domain.Projec
 
 // UpdateProject updates an existing project
 func (s *Service) UpdateProject(id string, req domain.UpdateProjectRequest) (*domain.Project, error) {
-	if err := validateProjectName(req.Name); err != nil {
-		return nil, err
+	if req.Name != nil {
+		if err := validateName(*req.Name, "project"); err != nil {
+			return nil, err
+		}
 	}
 
 	return s.projectRepo.Update(id, req)
@@ -337,10 +581,10 @@ func (s *Service) UpdateInstance(id string, req domain.UpdateInstanceRequest) (*
 		return nil, domain.InvalidInputError(
 			"Cannot change instance image from '"+current.Image+"' to '"+*req.Image+"'. The image field is immutable - you must destroy and recreate the instance to change the image.",
 			map[string]interface{}{
-				"field":         "image",
-				"current_value": current.Image,
+				"field":           "image",
+				"current_value":   current.Image,
 				"requested_value": *req.Image,
-				"solution":      "Remove and re-add the resource, or use 'terraform taint' to force recreation",
+				"solution":        "Remove and re-add the resource, or use 'terraform taint' to force recreation",
 			},
 		)
 	}
@@ -387,8 +631,20 @@ func (s *Service) DeleteInstance(id string) error {
 
 // CreateMetadata creates new metadata
 func (s *Service) CreateMetadata(req domain.CreateMetadataRequest) (*domain.Metadata, error) {
+	if req.OrgID == "" {
+		return nil, domain.InvalidInputError("org_id cannot be empty", nil)
+	}
 	if req.Path == "" {
 		return nil, domain.InvalidInputError("metadata path cannot be empty", nil)
+	}
+
+	// Verify organization exists
+	_, err := s.orgRepo.GetByID(req.OrgID)
+	if err != nil {
+		if domain.IsNotFound(err) {
+			return nil, domain.ForeignKeyViolationError("organization", "id", req.OrgID)
+		}
+		return nil, err
 	}
 
 	return s.metadataRepo.Create(req)
@@ -403,13 +659,16 @@ func (s *Service) GetMetadata(id string) (*domain.Metadata, error) {
 	return s.metadataRepo.GetByID(id)
 }
 
-// GetMetadataByPath retrieves metadata by path
-func (s *Service) GetMetadataByPath(path string) (*domain.Metadata, error) {
+// GetMetadataByPath retrieves metadata by org ID and path
+func (s *Service) GetMetadataByPath(orgID, path string) (*domain.Metadata, error) {
+	if orgID == "" {
+		return nil, domain.InvalidInputError("org_id cannot be empty", nil)
+	}
 	if path == "" {
 		return nil, domain.InvalidInputError("metadata path cannot be empty", nil)
 	}
 
-	return s.metadataRepo.GetByPath(path)
+	return s.metadataRepo.GetByPath(orgID, path)
 }
 
 // UpdateMetadata updates existing metadata
@@ -437,14 +696,23 @@ func (s *Service) DeleteMetadata(id string) error {
 
 // Bucket operations
 
-// CreateBucket creates a new bucket
-// Bucket IDs are now equal to their names to provide a stable, user-defined identifier.
-func (s *Service) CreateBucket(req domain.CreateBucketRequest) (*domain.Bucket, error) {
+// CreateBucket creates a new bucket within a project
+func (s *Service) CreateBucket(projectID string, req domain.CreateBucketRequest) (*domain.Bucket, error) {
 	if err := validateBucketName(req.Name); err != nil {
 		return nil, err
 	}
-	// Use name as the stable identifier (ID)
-	b := &domain.Bucket{ID: req.Name, Name: req.Name}
+
+	// Verify project exists
+	_, err := s.projectRepo.GetByID(projectID)
+	if err != nil {
+		if domain.IsNotFound(err) {
+			return nil, domain.ForeignKeyViolationError("project", "id", projectID)
+		}
+		return nil, err
+	}
+
+	// Use name as the stable identifier (ID) - scoped by project
+	b := &domain.Bucket{ID: req.Name, ProjectID: projectID, Name: req.Name}
 	if err := s.bucketRepo.Create(b); err != nil {
 		return nil, err
 	}
@@ -456,9 +724,9 @@ func (s *Service) GetBucket(id string) (*domain.Bucket, error) {
 	return s.bucketRepo.GetByID(id)
 }
 
-// GetBucketByName retrieves a bucket by name
-func (s *Service) GetBucketByName(name string) (*domain.Bucket, error) {
-	return s.bucketRepo.GetByName(name)
+// GetBucketByName retrieves a bucket by project ID and name
+func (s *Service) GetBucketByName(projectID, name string) (*domain.Bucket, error) {
+	return s.bucketRepo.GetByName(projectID, name)
 }
 
 // ListBuckets lists buckets with optional filtering

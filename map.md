@@ -21,7 +21,7 @@ A mock cloud provider for testing Terraform configurations and infrastructure to
                                  ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                          service/                                   │
-│              (Business Logic & Chaos Engineering)                   │
+│                      (Business Logic)                               │
 └─────────────────────────────────────────────────────────────────────┘
                                  │
                                  ▼
@@ -46,7 +46,7 @@ A mock cloud provider for testing Terraform configurations and infrastructure to
 | [go.mod](./go.mod) | Go module definition with dependencies (UUID, Gorilla Mux, SQLite3, Testify) |
 | [go.sum](./go.sum) | Go dependency lock file with checksums |
 | [Makefile](./Makefile) | Build automation: server build, testing, code quality, database ops, Docker |
-| [README.md](./README.md) | Project documentation: features, API overview, configuration, chaos engineering |
+| [README.md](./README.md) | Project documentation: features, API overview, configuration |
 
 ---
 
@@ -54,7 +54,7 @@ A mock cloud provider for testing Terraform configurations and infrastructure to
 
 | File | Description |
 |------|-------------|
-| [main.go](./cmd/server/main.go) | Entry point: initializes DB, repositories, service layer, chaos service, HTTP server with graceful shutdown |
+| [main.go](./cmd/server/main.go) | Entry point: initializes DB, repositories, service layer, HTTP server with graceful shutdown |
 | [config.go](./cmd/server/config.go) | Configuration via Spf13 Viper: flags, env vars, config files; priority order: flags > env > config file > defaults |
 
 ---
@@ -85,8 +85,6 @@ A mock cloud provider for testing Terraform configurations and infrastructure to
 |------|-------------|
 | [service.go](./service/service.go) | Core service with repository interfaces; ID generation; interfaces for all repositories |
 | [tfstate.go](./service/tfstate.go) | Terraform state management: GetTFState, SetTFState, DeleteTFState, lock operations |
-| [chaos/chaos.go](./service/chaos/chaos.go) | Chaos engineering: failure injection, latency ranges, error rates, configurable error types |
-| [chaos/chaos_test.go](./service/chaos/chaos_test.go) | Unit tests for chaos engineering functionality |
 
 ---
 
@@ -157,7 +155,6 @@ Organization
 
 - **Multi-tenant hierarchy**: Organizations → Projects → Instances/Buckets
 - **Terraform HTTP state backend**: Full protocol implementation with locking
-- **Chaos engineering**: Latency injection, error injection for resilience testing
 - **Web console**: HTML-based UI with HTMX for dynamic interactions
 - **SQLite persistence**: Schema with foreign keys and WAL mode
 - **Go SDK**: Client library with retry logic and authentication

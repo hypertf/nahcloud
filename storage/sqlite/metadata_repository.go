@@ -22,8 +22,8 @@ func NewMetadataRepository(db *DB) *MetadataRepository {
 
 // Create creates new metadata
 func (r *MetadataRepository) Create(req domain.CreateMetadataRequest) (*domain.Metadata, error) {
-	// Check if path already exists
-	exists, err := r.pathExists(req.Path)
+	// Check if path already exists for this org
+	exists, err := r.pathExists(req.OrgID, req.Path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check path existence: %w", err)
 	}
@@ -36,16 +36,20 @@ func (r *MetadataRepository) Create(req domain.CreateMetadataRequest) (*domain.M
 
 	metadata := &domain.Metadata{
 		ID:        id,
+		OrgID:     req.OrgID,
 		Path:      req.Path,
 		Value:     req.Value,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 
-	query := `INSERT INTO metadata (id, path, value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`
-	
-	_, err = r.db.Exec(query, metadata.ID, metadata.Path, metadata.Value, metadata.CreatedAt, metadata.UpdatedAt)
+	query := `INSERT INTO metadata (id, org_id, path, value, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
+
+	_, err = r.db.Exec(query, metadata.ID, metadata.OrgID, metadata.Path, metadata.Value, metadata.CreatedAt, metadata.UpdatedAt)
 	if err != nil {
+		if strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
+			return nil, domain.ForeignKeyViolationError("organization", "id", req.OrgID)
+		}
 		return nil, fmt.Errorf("failed to create metadata: %w", err)
 	}
 
@@ -55,10 +59,11 @@ func (r *MetadataRepository) Create(req domain.CreateMetadataRequest) (*domain.M
 // GetByID retrieves metadata by ID
 func (r *MetadataRepository) GetByID(id string) (*domain.Metadata, error) {
 	metadata := &domain.Metadata{}
-	query := `SELECT id, path, value, created_at, updated_at FROM metadata WHERE id = ?`
-	
+	query := `SELECT id, org_id, path, value, created_at, updated_at FROM metadata WHERE id = ?`
+
 	err := r.db.QueryRow(query, id).Scan(
 		&metadata.ID,
+		&metadata.OrgID,
 		&metadata.Path,
 		&metadata.Value,
 		&metadata.CreatedAt,
@@ -74,13 +79,14 @@ func (r *MetadataRepository) GetByID(id string) (*domain.Metadata, error) {
 	return metadata, nil
 }
 
-// GetByPath retrieves metadata by path
-func (r *MetadataRepository) GetByPath(path string) (*domain.Metadata, error) {
+// GetByPath retrieves metadata by org ID and path
+func (r *MetadataRepository) GetByPath(orgID, path string) (*domain.Metadata, error) {
 	metadata := &domain.Metadata{}
-	query := `SELECT id, path, value, created_at, updated_at FROM metadata WHERE path = ?`
+	query := `SELECT id, org_id, path, value, created_at, updated_at FROM metadata WHERE org_id = ? AND path = ?`
 
-	err := r.db.QueryRow(query, path).Scan(
+	err := r.db.QueryRow(query, orgID, path).Scan(
 		&metadata.ID,
+		&metadata.OrgID,
 		&metadata.Path,
 		&metadata.Value,
 		&metadata.CreatedAt,
@@ -106,7 +112,7 @@ func (r *MetadataRepository) Update(id string, req domain.UpdateMetadataRequest)
 
 	// Check if path is being changed and if new path already exists
 	if req.Path != nil && *req.Path != existing.Path {
-		exists, err := r.pathExists(*req.Path)
+		exists, err := r.pathExists(existing.OrgID, *req.Path)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check path existence: %w", err)
 		}
@@ -125,7 +131,7 @@ func (r *MetadataRepository) Update(id string, req domain.UpdateMetadataRequest)
 	existing.UpdatedAt = time.Now()
 
 	query := `UPDATE metadata SET path = ?, value = ?, updated_at = ? WHERE id = ?`
-	
+
 	_, err = r.db.Exec(query, existing.Path, existing.Value, existing.UpdatedAt, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update metadata: %w", err)
@@ -134,13 +140,18 @@ func (r *MetadataRepository) Update(id string, req domain.UpdateMetadataRequest)
 	return existing, nil
 }
 
-// List retrieves metadata entries with optional prefix filtering
+// List retrieves metadata entries with optional org and prefix filtering
 func (r *MetadataRepository) List(opts domain.MetadataListOptions) ([]*domain.Metadata, error) {
 	var metadata []*domain.Metadata
 	var args []interface{}
-	
-	query := `SELECT id, path, value, created_at, updated_at FROM metadata`
+
+	query := `SELECT id, org_id, path, value, created_at, updated_at FROM metadata`
 	var conditions []string
+
+	if opts.OrgID != "" {
+		conditions = append(conditions, "org_id = ?")
+		args = append(args, opts.OrgID)
+	}
 
 	if opts.Prefix != "" {
 		// For prefix matching, we want paths that start with the prefix
@@ -162,7 +173,7 @@ func (r *MetadataRepository) List(opts domain.MetadataListOptions) ([]*domain.Me
 
 	for rows.Next() {
 		m := &domain.Metadata{}
-		err := rows.Scan(&m.ID, &m.Path, &m.Value, &m.CreatedAt, &m.UpdatedAt)
+		err := rows.Scan(&m.ID, &m.OrgID, &m.Path, &m.Value, &m.CreatedAt, &m.UpdatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan metadata: %w", err)
 		}
@@ -185,7 +196,7 @@ func (r *MetadataRepository) Delete(id string) error {
 	}
 
 	query := `DELETE FROM metadata WHERE id = ?`
-	
+
 	_, err = r.db.Exec(query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete metadata: %w", err)
@@ -194,15 +205,15 @@ func (r *MetadataRepository) Delete(id string) error {
 	return nil
 }
 
-// pathExists checks if a path already exists in the database
-func (r *MetadataRepository) pathExists(path string) (bool, error) {
+// pathExists checks if a path already exists in the database for the given org
+func (r *MetadataRepository) pathExists(orgID, path string) (bool, error) {
 	var count int
-	query := `SELECT COUNT(*) FROM metadata WHERE path = ?`
-	
-	err := r.db.QueryRow(query, path).Scan(&count)
+	query := `SELECT COUNT(*) FROM metadata WHERE org_id = ? AND path = ?`
+
+	err := r.db.QueryRow(query, orgID, path).Scan(&count)
 	if err != nil {
 		return false, err
 	}
-	
+
 	return count > 0, nil
 }

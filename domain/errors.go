@@ -122,3 +122,27 @@ func IsInvalidInput(err error) bool {
 	}
 	return false
 }
+
+// IsUnauthorized checks if error is an unauthorized error
+func IsUnauthorized(err error) bool {
+	if nahErr, ok := err.(*NahError); ok {
+		return nahErr.Code == ErrorCodeUnauthorized
+	}
+	return false
+}
+
+// IsTooManyRequests checks if error is a too many requests error
+func IsTooManyRequests(err error) bool {
+	if nahErr, ok := err.(*NahError); ok {
+		return nahErr.Code == ErrorCodeTooManyRequests
+	}
+	return false
+}
+
+// IsServiceUnavailable checks if error is a service unavailable error
+func IsServiceUnavailable(err error) bool {
+	if nahErr, ok := err.(*NahError); ok {
+		return nahErr.Code == ErrorCodeServiceUnavailable
+	}
+	return false
+}

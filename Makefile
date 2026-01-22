@@ -1,4 +1,4 @@
-.PHONY: build test clean server provider install-deps fmt vet lint acceptance-test chaos-test help
+.PHONY: build test clean server provider install-deps fmt vet lint acceptance-test help
 
 # Variables
 BINARY_NAME_SERVER=nahcloud
@@ -45,14 +45,6 @@ dev-css: ## Watch and rebuild Tailwind CSS only
 run-server: ## Run the server locally
 	go run ./cmd/server
 
-run-server-with-chaos: ## Run the server with chaos enabled
-	NAH_CHAOS_ENABLED=true \
-	NAH_LATENCY_GLOBAL_MS=10-100 \
-	NAH_ERRRATE_PROJECTS=0.1 \
-	NAH_ERRRATE_INSTANCES=0.05 \
-	NAH_ERRRATE_METADATA=0.05 \
-	go run ./cmd/server
-
 ## Testing
 test: ## Run unit tests
 	go test -v ./...
@@ -61,10 +53,7 @@ test-coverage: ## Run tests with coverage
 	go test -v -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
-chaos-test: ## Run chaos engineering tests
-	NAH_CHAOS_ENABLED=true go test -v -tags=chaos ./...
-
-test-all: test chaos-test ## Run all tests
+test-all: test ## Run all tests
 
 ## Code quality
 fmt: ## Format Go code

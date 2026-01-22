@@ -14,7 +14,6 @@ import (
 
 	"github.com/hypertf/nahcloud/api"
 	"github.com/hypertf/nahcloud/service"
-	"github.com/hypertf/nahcloud/service/chaos"
 	"github.com/hypertf/nahcloud/storage/sqlite"
 )
 
@@ -32,8 +31,7 @@ func run() error {
 		Long: `NahCloud Server is a mock cloud provider designed for testing Terraform configurations.
 
 It provides fake implementations of cloud resources like compute instances, projects,
-and metadata services, with optional chaos engineering features for testing error
-handling and resilience.` + printConfigHelp(),
+and metadata services.` + printConfigHelp(),
 		Version: Version,
 		RunE:    runServer,
 	}
@@ -58,6 +56,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 	defer db.Close()
 
 	// Initialize repositories
+	orgRepo := sqlite.NewOrganizationRepository(db)
+	apiKeyRepo := sqlite.NewAPIKeyRepository(db)
 	projectRepo := sqlite.NewProjectRepository(db)
 	instanceRepo := sqlite.NewInstanceRepository(db)
 	metadataRepo := sqlite.NewMetadataRepository(db)
@@ -65,17 +65,13 @@ func runServer(cmd *cobra.Command, args []string) error {
 	objectRepo := sqlite.NewObjectRepository(db)
 
 	// Initialize service layer
-	svc := service.NewService(projectRepo, instanceRepo, metadataRepo, bucketRepo, objectRepo)
-
-	// Initialize chaos service with config
-	chaosConfig := config.ToChaosConfig()
-	chaosService := chaos.NewChaosServiceWithConfig(chaosConfig)
+	svc := service.NewService(orgRepo, apiKeyRepo, projectRepo, instanceRepo, metadataRepo, bucketRepo, objectRepo)
 
 	// Initialize API handlers
-	handler := api.NewHandler(svc, chaosService, config.Token)
+	handler := api.NewHandler(svc)
 
 	// Setup router
-	router := api.SetupRouter(handler, Version)
+	router := api.SetupRouter(handler, svc, Version)
 
 	// Create HTTP server
 	server := &http.Server{
@@ -90,9 +86,6 @@ func runServer(cmd *cobra.Command, args []string) error {
 	serverErrors := make(chan error, 1)
 	go func() {
 		log.Printf("NahCloud server starting on %s", config.Addr)
-		if chaosConfig.Enabled {
-			log.Printf("Chaos engineering enabled (seed: %d)", chaosConfig.Seed)
-		}
 		serverErrors <- server.ListenAndServe()
 	}()
 
