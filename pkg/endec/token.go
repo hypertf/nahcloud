@@ -8,13 +8,7 @@ import (
 
 // Token prefixes (3 chars)
 const (
-	PrefixSession = "ses" // session token
-	PrefixAPI     = "api" // api key
-	PrefixRefresh = "ref" // refresh token
-	PrefixInvite  = "inv" // invite token
-	PrefixReset   = "rst" // password reset
-	PrefixVerify  = "vfy" // email verification
-	PrefixWebhook = "whk" // webhook secret
+	PrefixAPI = "api" // api key
 )
 
 // CreateToken generates a nah token with the given prefix and random payload

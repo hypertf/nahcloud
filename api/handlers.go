@@ -22,7 +22,7 @@ func NewHandler(service *service.Service) *Handler {
 }
 
 // writeJSON writes a JSON response
-func (h *Handler) writeJSON(w http.ResponseWriter, status int, data interface{}) {
+func (h *Handler) writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
@@ -47,9 +47,6 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 		message = err.Error()
 	} else if domain.IsUnauthorized(err) {
 		status = http.StatusUnauthorized
-		message = err.Error()
-	} else if domain.IsTooManyRequests(err) {
-		status = http.StatusTooManyRequests
 		message = err.Error()
 	} else if domain.IsServiceUnavailable(err) {
 		status = http.StatusServiceUnavailable
@@ -104,15 +101,21 @@ func (h *Handler) resolveProject(r *http.Request) (*domain.Project, error) {
 	return h.service.GetProjectBySlug(org.ID, projectSlug)
 }
 
+// decodeJSON decodes JSON from the request body into the given value
+func (h *Handler) decodeJSON(r *http.Request, v any) error {
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		return domain.InvalidInputError("invalid JSON", nil)
+	}
+	return nil
+}
+
 // Organization handlers
 
 // CreateOrganization handles POST /v1/orgs
 func (h *Handler) CreateOrganization(w http.ResponseWriter, r *http.Request) {
-
-
 	var req domain.CreateOrganizationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 
@@ -138,65 +141,7 @@ func (h *Handler) GetOrganization(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, org)
 }
 
-// ListOrganizations handles GET /v1/orgs
-func (h *Handler) ListOrganizations(w http.ResponseWriter, r *http.Request) {
-
-
-	opts := domain.OrganizationListOptions{
-		Slug: r.URL.Query().Get("slug"),
-	}
-
-	orgs, err := h.service.ListOrganizations(opts)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, orgs)
-}
-
-// UpdateOrganization handles PATCH /v1/orgs/{org}
-func (h *Handler) UpdateOrganization(w http.ResponseWriter, r *http.Request) {
-
-
-	org, err := h.resolveOrg(r)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
-
-	var req domain.UpdateOrganizationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
-		return
-	}
-
-	updated, err := h.service.UpdateOrganization(org.ID, req)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, updated)
-}
-
-// DeleteOrganization handles DELETE /v1/orgs/{org}
-func (h *Handler) DeleteOrganization(w http.ResponseWriter, r *http.Request) {
-
-
-	org, err := h.resolveOrg(r)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
-
-	if err := h.service.DeleteOrganization(org.ID); err != nil {
-		h.writeError(w, err)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
+// TODO: Add admin controls for ListOrganizations, UpdateOrganization, DeleteOrganization
 
 // API Key handlers
 
@@ -209,8 +154,8 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.CreateAPIKeyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 
@@ -270,8 +215,8 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.CreateProjectRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 
@@ -332,8 +277,8 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.UpdateProjectRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 
@@ -377,8 +322,8 @@ func (h *Handler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.CreateInstanceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 
@@ -473,8 +418,8 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.UpdateInstanceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 
@@ -532,8 +477,8 @@ func (h *Handler) CreateMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.CreateMetadataRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 
@@ -626,8 +571,8 @@ func (h *Handler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.UpdateMetadataRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 
@@ -685,8 +630,8 @@ func (h *Handler) CreateBucket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.CreateBucketRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 
@@ -765,8 +710,8 @@ func (h *Handler) UpdateBucket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.UpdateBucketRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 
@@ -828,8 +773,8 @@ func (h *Handler) CreateObject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.CreateObjectRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 
@@ -945,8 +890,8 @@ func (h *Handler) UpdateObject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.UpdateObjectRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, domain.InvalidInputError("invalid JSON", nil))
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
 		return
 	}
 

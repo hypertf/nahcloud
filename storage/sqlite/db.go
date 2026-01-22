@@ -147,6 +147,7 @@ func (db *DB) initSchema() error {
 }
 
 // runMigrations applies schema migrations for existing databases
+// TODO: Implement a proper migration system (e.g., golang-migrate)
 func (db *DB) runMigrations() error {
 	// Check if we need to migrate from old schema (no organizations)
 	if err := db.migrateToOrganizations(); err != nil {

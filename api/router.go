@@ -95,10 +95,8 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	authAPI.Use(AuthMiddleware(svc))
 
 	// Organization routes (authenticated)
-	authAPI.HandleFunc("/orgs", handler.ListOrganizations).Methods("GET")
+	// TODO: Add admin controls for listing/updating/deleting orgs
 	authAPI.HandleFunc("/orgs/{org}", handler.GetOrganization).Methods("GET")
-	authAPI.HandleFunc("/orgs/{org}", handler.UpdateOrganization).Methods("PATCH")
-	authAPI.HandleFunc("/orgs/{org}", handler.DeleteOrganization).Methods("DELETE")
 
 	// API Key routes (scoped to org, authenticated)
 	authAPI.HandleFunc("/orgs/{org}/api-keys", handler.CreateAPIKey).Methods("POST")

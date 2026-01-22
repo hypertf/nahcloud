@@ -14,7 +14,6 @@ var Version = "dev"
 // Config holds all server configuration
 type Config struct {
 	Addr      string `mapstructure:"addr"`
-	Token     string `mapstructure:"token"`
 	SQLiteDSN string `mapstructure:"sqlite_dsn"`
 }
 
@@ -23,12 +22,10 @@ func setupConfig(cmd *cobra.Command) {
 	// Define flags
 	cmd.Flags().StringP("config", "c", "", "Config file path (YAML, JSON, or TOML)")
 	cmd.Flags().String("addr", ":8080", "HTTP server address")
-	cmd.Flags().String("token", "", "Authentication token")
 	cmd.Flags().String("sqlite-dsn", "", "SQLite database path")
 
 	// Bind flags to viper
 	viper.BindPFlag("addr", cmd.Flags().Lookup("addr"))
-	viper.BindPFlag("token", cmd.Flags().Lookup("token"))
 	viper.BindPFlag("sqlite_dsn", cmd.Flags().Lookup("sqlite-dsn"))
 
 	// Set up environment variable binding with NAH_ prefix
@@ -67,7 +64,6 @@ Environment Variables:
   Nested keys use underscores. Examples:
 
   NAH_ADDR=:9090                    Set server address
-  NAH_TOKEN=secret                  Set auth token
   NAH_SQLITE_DSN=./data.db          Set database path
 
 Config File:
@@ -75,7 +71,6 @@ Config File:
   Example YAML config:
 
     addr: ":8080"
-    token: "secret"
     sqlite_dsn: "./nahcloud.db"
 
 Priority (highest to lowest):

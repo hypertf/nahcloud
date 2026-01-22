@@ -12,7 +12,6 @@ const (
 	ErrorCodeForeignKeyViolation = "FOREIGN_KEY_VIOLATION"
 	ErrorCodeInternalError      = "INTERNAL_ERROR"
 	ErrorCodeUnauthorized       = "UNAUTHORIZED"
-	ErrorCodeTooManyRequests    = "TOO_MANY_REQUESTS"
 	ErrorCodeServiceUnavailable = "SERVICE_UNAVAILABLE"
 )
 
@@ -81,11 +80,6 @@ func UnauthorizedError(message string) *NahError {
 	return NewError(ErrorCodeUnauthorized, message)
 }
 
-// TooManyRequestsError creates a too many requests error
-func TooManyRequestsError(message string) *NahError {
-	return NewError(ErrorCodeTooManyRequests, message)
-}
-
 // ServiceUnavailableError creates a service unavailable error
 func ServiceUnavailableError(message string) *NahError {
 	return NewError(ErrorCodeServiceUnavailable, message)
@@ -127,14 +121,6 @@ func IsInvalidInput(err error) bool {
 func IsUnauthorized(err error) bool {
 	if nahErr, ok := err.(*NahError); ok {
 		return nahErr.Code == ErrorCodeUnauthorized
-	}
-	return false
-}
-
-// IsTooManyRequests checks if error is a too many requests error
-func IsTooManyRequests(err error) bool {
-	if nahErr, ok := err.(*NahError); ok {
-		return nahErr.Code == ErrorCodeTooManyRequests
 	}
 	return false
 }

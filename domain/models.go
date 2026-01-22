@@ -7,8 +7,8 @@ import (
 // Organization represents a top-level organization in the NahCloud system
 type Organization struct {
 	ID        string    `json:"id" db:"id"`
-	Slug      string    `json:"slug" db:"slug"`
-	Name      string    `json:"name" db:"name"`
+	Slug      string    `json:"slug" db:"slug"` // URL-safe identifier (like GCP project ID)
+	Name      string    `json:"name" db:"name"` // Human-readable display name
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
