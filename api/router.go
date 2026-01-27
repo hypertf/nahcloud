@@ -41,7 +41,7 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 
 	// Web console routes (no API auth - web has its own session handling)
 	webHandler := web.NewHandler(svc)
-	webRouter := router.PathPrefix("/web").Subrouter()
+	webRouter := router.PathPrefix("").Subrouter()
 
 	// Static assets
 	webRouter.HandleFunc("/static/logo.png", webHandler.ServeLogo).Methods("GET")
