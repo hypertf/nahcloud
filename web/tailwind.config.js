@@ -2,6 +2,7 @@
 module.exports = {
   content: [
     "./handlers.go",
+    "./templates.go",
   ],
   theme: {
     extend: {
