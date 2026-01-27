@@ -103,11 +103,11 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 	projects, err := h.service.ListProjects(domain.ProjectListOptions{OrgID: org.ID})
 	if err != nil || len(projects) == 0 {
-		http.Redirect(w, r, fmt.Sprintf("/web/org/%s/projects", org.Slug), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/org/%s/projects", org.Slug), http.StatusFound)
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/web/org/%s/projects/%s/instances", org.Slug, projects[0].Slug), http.StatusFound)
+	http.Redirect(w, r, fmt.Sprintf("/org/%s/projects/%s/instances", org.Slug, projects[0].Slug), http.StatusFound)
 }
 
 // renderError renders a full page error
