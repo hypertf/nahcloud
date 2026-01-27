@@ -6,7 +6,7 @@ const errorTemplate = `<!DOCTYPE html>
 <html>
 <head>
     <title>Error - NahCloud</title>
-    <link rel="icon" type="image/png" href="/web/static/logo.png">
+    <link rel="icon" type="image/png" href="/static/logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -16,7 +16,7 @@ const errorTemplate = `<!DOCTYPE html>
     <div class="text-center">
         <h1 class="text-2xl font-semibold text-slate-800 mb-2">Error</h1>
         <p class="text-slate-600 mb-4">{{.Message}}</p>
-        <a href="/web" class="text-[#2878B5] hover:underline">Go back</a>
+         <a href="/" class="text-[#2878B5] hover:underline">Go back</a>
     </div>
 </body>
 </html>`
@@ -25,7 +25,7 @@ const baseTemplate = `<!DOCTYPE html>
 <html>
 <head>
     <title>NahCloud Console</title>
-    <link rel="icon" type="image/png" href="/web/static/logo.png">
+    <link rel="icon" type="image/png" href="/static/logo.png">
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -47,7 +47,7 @@ const baseTemplate = `<!DOCTYPE html>
         <aside class="w-60 bg-white border-r border-slate-200 py-6 fixed h-screen overflow-y-auto">
             <div class="px-6 pb-6 border-b border-slate-200 mb-4">
                 <div class="flex items-center gap-3">
-                    <img src="/web/static/logo.png" alt="NahCloud" class="w-10 h-10 rounded-lg">
+                    <img src="/static/logo.png" alt="NahCloud" class="w-10 h-10 rounded-lg">
                     <div>
                         <h1 class="text-xl font-bold text-[#2878B5]">NahCloud</h1>
                         <span class="text-xs text-slate-500 font-medium">Console</span>
@@ -57,7 +57,7 @@ const baseTemplate = `<!DOCTYPE html>
             {{if .Context.Projects}}
             <div class="px-6 pb-4 mb-2">
                 <label class="block text-xs text-slate-500 font-medium mb-1.5">Project</label>
-                <select onchange="window.location.href='/web/org/{{.Context.Org.Slug}}/projects/' + this.value + '/instances'" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all bg-white">
+                <select onchange="window.location.href='/org/{{.Context.Org.Slug}}/projects/' + this.value + '/instances'" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all bg-white">
                     {{range .Context.Projects}}
                     <option value="{{.Slug}}" {{if and $.Context.Project (eq .Slug $.Context.Project.Slug)}}selected{{end}}>{{.Name}}</option>
                     {{end}}
@@ -66,7 +66,7 @@ const baseTemplate = `<!DOCTYPE html>
             {{end}}
             <nav class="px-3">
                 {{if .Context.Org}}
-                <a href="/web/org/{{.Context.Org.Slug}}/projects" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
+                <a href="/org/{{.Context.Org.Slug}}/projects" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
                     <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
                     </svg>
@@ -74,13 +74,13 @@ const baseTemplate = `<!DOCTYPE html>
                 </a>
                 {{end}}
                 {{if .Context.Project}}
-                <a href="/web/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/instances" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
+                <a href="/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/instances" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
                     <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path>
-                    </svg>
-                    Instances
-                </a>
-                <a href="/web/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/storage" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
+                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path>
+                     </svg>
+                     Instances
+                 </a>
+                 <a href="/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/storage" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
                     <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
                     </svg>
@@ -88,7 +88,7 @@ const baseTemplate = `<!DOCTYPE html>
                 </a>
                 {{end}}
                 {{if .Context.Org}}
-                <a href="/web/org/{{.Context.Org.Slug}}/metadata" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
+                <a href="/org/{{.Context.Org.Slug}}/metadata" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
                     <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
                     </svg>
@@ -128,7 +128,7 @@ const projectsTemplate = `{{define "content"}}
 <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
     <div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
         <h2 class="text-lg font-semibold">Projects</h2>
-        <button class="btn btn-primary" hx-get="/web/org/{{.Context.Org.Slug}}/projects/new" hx-target="#modal-content">
+        <button class="btn btn-primary" hx-get="/org/{{.Context.Org.Slug}}/projects/new" hx-target="#modal-content">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -148,14 +148,14 @@ const projectsTemplate = `{{define "content"}}
             {{range .Projects}}
             <tr class="hover:bg-slate-50">
                 <td class="px-6 py-4 border-b border-slate-100">
-                    <a href="/web/org/{{$.Context.Org.Slug}}/projects/{{.Slug}}/instances" class="font-medium text-[#2878B5] hover:underline">{{.Slug}}</a>
+                    <a href="/org/{{$.Context.Org.Slug}}/projects/{{.Slug}}/instances" class="font-medium text-[#2878B5] hover:underline">{{.Slug}}</a>
                 </td>
                 <td class="px-6 py-4 border-b border-slate-100">{{.Name}}</td>
                 <td class="px-6 py-4 border-b border-slate-100 text-slate-500">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
                 <td class="px-6 py-4 border-b border-slate-100">
                     <div class="flex gap-2">
-                        <button class="btn btn-secondary btn-sm" hx-get="/web/org/{{$.Context.Org.Slug}}/projects/{{.Slug}}/edit" hx-target="#modal-content">Edit</button>
-                        <button class="btn btn-danger btn-sm" hx-delete="/web/org/{{$.Context.Org.Slug}}/projects/{{.Slug}}" hx-target="closest tr" hx-confirm="Are you sure you want to delete this project?">Delete</button>
+                        <button class="btn btn-secondary btn-sm" hx-get="/org/{{$.Context.Org.Slug}}/projects/{{.Slug}}/edit" hx-target="#modal-content">Edit</button>
+                        <button class="btn btn-danger btn-sm" hx-delete="/org/{{$.Context.Org.Slug}}/projects/{{.Slug}}" hx-target="closest tr" hx-confirm="Are you sure you want to delete this project?">Delete</button>
                     </div>
                 </td>
             </tr>
@@ -174,7 +174,7 @@ const newProjectFormTemplate = `
     <h3 class="text-lg font-semibold">New Project</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-post="/web/org/{{.Org.Slug}}/projects" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
+<form hx-post="/org/{{.Org.Slug}}/projects" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
         <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
@@ -198,7 +198,7 @@ const editProjectFormTemplate = `
     <h3 class="text-lg font-semibold">Edit Project</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-put="/web/org/{{.Org.Slug}}/projects/{{.Project.Slug}}" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
+<form hx-put="/org/{{.Org.Slug}}/projects/{{.Project.Slug}}" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
         <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
@@ -220,7 +220,7 @@ const instancesTemplate = `{{define "content"}}
 <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
     <div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
         <h2 class="text-lg font-semibold">Instances</h2>
-        <button class="btn btn-primary" hx-get="/web/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/instances/new" hx-target="#modal-content">
+        <button class="btn btn-primary" hx-get="/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/instances/new" hx-target="#modal-content">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -243,7 +243,7 @@ const instancesTemplate = `{{define "content"}}
             {{range .Instances}}
             <tr class="hover:bg-slate-50">
                 <td class="px-6 py-4 border-b border-slate-100">
-                    <a href="#" hx-get="/web/org/{{$.Context.Org.Slug}}/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}/edit" hx-target="#modal-content" class="font-medium text-[#2878B5] hover:underline">{{.Name}}</a>
+                    <a href="#" hx-get="/org/{{$.Context.Org.Slug}}/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}/edit" hx-target="#modal-content" class="font-medium text-[#2878B5] hover:underline">{{.Name}}</a>
                 </td>
                 <td class="px-6 py-4 border-b border-slate-100"><code class="bg-slate-100 px-2 py-0.5 rounded text-sm">{{.Region}}</code></td>
                 <td class="px-6 py-4 border-b border-slate-100">{{.CPU}} vCPU</td>
@@ -264,8 +264,8 @@ const instancesTemplate = `{{define "content"}}
                 </td>
                 <td class="px-6 py-4 border-b border-slate-100">
                     <div class="flex gap-2">
-                        <button class="btn btn-secondary btn-sm" hx-get="/web/org/{{$.Context.Org.Slug}}/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}/edit" hx-target="#modal-content">Edit</button>
-                        <button class="btn btn-danger btn-sm" hx-delete="/web/org/{{$.Context.Org.Slug}}/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}" hx-target="closest tr" hx-confirm="Are you sure you want to delete this instance?">Delete</button>
+                        <button class="btn btn-secondary btn-sm" hx-get="/org/{{$.Context.Org.Slug}}/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}/edit" hx-target="#modal-content">Edit</button>
+                        <button class="btn btn-danger btn-sm" hx-delete="/org/{{$.Context.Org.Slug}}/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}" hx-target="closest tr" hx-confirm="Are you sure you want to delete this instance?">Delete</button>
                     </div>
                 </td>
             </tr>
@@ -284,7 +284,7 @@ const newInstanceFormTemplate = `
     <h3 class="text-lg font-semibold">New Instance</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-post="/web/org/{{.Org.Slug}}/projects/{{.Project.Slug}}/instances" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
+<form hx-post="/org/{{.Org.Slug}}/projects/{{.Project.Slug}}/instances" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
         <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
@@ -330,7 +330,7 @@ const editInstanceFormTemplate = `
     <h3 class="text-lg font-semibold">Edit Instance</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-put="/web/org/{{.Org.Slug}}/projects/{{.Project.Slug}}/instances/{{.Instance.ID}}" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
+<form hx-put="/org/{{.Org.Slug}}/projects/{{.Project.Slug}}/instances/{{.Instance.ID}}" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
         <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
@@ -374,7 +374,7 @@ const metadataTemplate = `{{define "content"}}
 <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
     <div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
         <h2 class="text-lg font-semibold">Metadata</h2>
-        <button class="btn btn-primary" hx-get="/web/org/{{.Context.Org.Slug}}/metadata/new" hx-target="#modal-content">
+        <button class="btn btn-primary" hx-get="/org/{{.Context.Org.Slug}}/metadata/new" hx-target="#modal-content">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -384,7 +384,7 @@ const metadataTemplate = `{{define "content"}}
     <div class="px-6 py-4 border-b border-slate-200">
         <div class="max-w-sm">
             <label class="block text-sm font-medium mb-1.5" for="prefix-filter">Filter by prefix</label>
-            <input type="text" id="prefix-filter" name="prefix" hx-get="/web/org/{{.Context.Org.Slug}}/metadata" hx-target="#content" hx-trigger="input changed delay:500ms" value="{{.Prefix}}" placeholder="Enter prefix to filter..." class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
+            <input type="text" id="prefix-filter" name="prefix" hx-get="/org/{{.Context.Org.Slug}}/metadata" hx-target="#content" hx-trigger="input changed delay:500ms" value="{{.Prefix}}" placeholder="Enter prefix to filter..." class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
         </div>
     </div>
     <table class="w-full">
@@ -404,8 +404,8 @@ const metadataTemplate = `{{define "content"}}
                 <td class="px-6 py-4 border-b border-slate-100 text-slate-500">{{.UpdatedAt.Format "2006-01-02 15:04:05"}}</td>
                 <td class="px-6 py-4 border-b border-slate-100">
                     <div class="flex gap-2">
-                        <button class="btn btn-secondary btn-sm" hx-get="/web/org/{{$.Context.Org.Slug}}/metadata/edit?id={{.ID}}" hx-target="#modal-content">Edit</button>
-                        <button class="btn btn-danger btn-sm" hx-delete="/web/org/{{$.Context.Org.Slug}}/metadata/delete?id={{.ID}}" hx-target="#row-{{.ID}}" hx-swap="outerHTML" hx-confirm="Are you sure you want to delete this metadata?">Delete</button>
+                        <button class="btn btn-secondary btn-sm" hx-get="/org/{{$.Context.Org.Slug}}/metadata/edit?id={{.ID}}" hx-target="#modal-content">Edit</button>
+                        <button class="btn btn-danger btn-sm" hx-delete="/org/{{$.Context.Org.Slug}}/metadata/delete?id={{.ID}}" hx-target="#row-{{.ID}}" hx-swap="outerHTML" hx-confirm="Are you sure you want to delete this metadata?">Delete</button>
                     </div>
                 </td>
             </tr>
@@ -424,7 +424,7 @@ const newMetadataFormTemplate = `
     <h3 class="text-lg font-semibold">New Metadata</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-post="/web/org/{{.Org.Slug}}/metadata" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
+<form hx-post="/org/{{.Org.Slug}}/metadata" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
         <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
@@ -447,7 +447,7 @@ const editMetadataFormTemplate = `
     <h3 class="text-lg font-semibold">Edit Metadata</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-put="/web/org/{{.Org.Slug}}/metadata/update" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
+<form hx-put="/org/{{.Org.Slug}}/metadata/update" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <input type="hidden" name="id" value="{{.Metadata.ID}}">
     <div class="p-6">
         <div id="form-error" class="mb-4"></div>
@@ -470,7 +470,7 @@ const storageTemplate = `{{define "content"}}
 <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
     <div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
         <h2 class="text-lg font-semibold">Storage Buckets</h2>
-        <button class="btn btn-primary" hx-get="/web/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/storage/buckets/new" hx-target="#modal-content">
+        <button class="btn btn-primary" hx-get="/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/storage/buckets/new" hx-target="#modal-content">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -489,7 +489,7 @@ const storageTemplate = `{{define "content"}}
             {{range .Buckets}}
             <tr class="hover:bg-slate-50">
                 <td class="px-6 py-4 border-b border-slate-100">
-                    <a href="/web/org/{{$.Context.Org.Slug}}/projects/{{$.Context.Project.Slug}}/storage/{{.Name}}" class="flex items-center gap-3 text-[#2878B5] hover:underline">
+                    <a href="/org/{{$.Context.Org.Slug}}/projects/{{$.Context.Project.Slug}}/storage/{{.Name}}" class="flex items-center gap-3 text-[#2878B5] hover:underline">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
                         </svg>
@@ -514,7 +514,7 @@ const newBucketFormTemplate = `
     <h3 class="text-lg font-semibold">New Bucket</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-post="/web/org/{{.Org.Slug}}/projects/{{.Project.Slug}}/storage/buckets" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
+<form hx-post="/org/{{.Org.Slug}}/projects/{{.Project.Slug}}/storage/buckets" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
         <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
@@ -532,7 +532,7 @@ const bucketObjectsTemplate = `{{define "content"}}
 <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
     <div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
         <div class="flex items-center gap-3">
-            <a href="/web/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/storage" class="btn btn-secondary btn-sm">
+            <a href="/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/storage" class="btn btn-secondary btn-sm">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
                 </svg>
@@ -540,7 +540,7 @@ const bucketObjectsTemplate = `{{define "content"}}
             </a>
             <h2 class="text-lg font-semibold">{{.Bucket.Name}}</h2>
         </div>
-        <button class="btn btn-primary" hx-get="/web/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/storage/{{.Bucket.Name}}/objects/new" hx-target="#modal-content">
+        <button class="btn btn-primary" hx-get="/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/storage/{{.Bucket.Name}}/objects/new" hx-target="#modal-content">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
             </svg>
@@ -550,7 +550,7 @@ const bucketObjectsTemplate = `{{define "content"}}
     <div class="px-6 py-4 border-b border-slate-200">
         <div class="max-w-sm">
             <label class="block text-sm font-medium mb-1.5" for="prefix-filter">Filter by prefix</label>
-            <input type="text" id="prefix-filter" name="prefix" hx-get="/web/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/storage/{{.Bucket.Name}}" hx-params="*" hx-target="#content" hx-trigger="input changed delay:500ms" value="{{.Prefix}}" placeholder="folder/subfolder/" class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
+            <input type="text" id="prefix-filter" name="prefix" hx-get="/org/{{.Context.Org.Slug}}/projects/{{.Context.Project.Slug}}/storage/{{.Bucket.Name}}" hx-params="*" hx-target="#content" hx-trigger="input changed delay:500ms" value="{{.Prefix}}" placeholder="folder/subfolder/" class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all">
         </div>
     </div>
     <table class="w-full">
@@ -574,7 +574,7 @@ const bucketObjectsTemplate = `{{define "content"}}
                 </td>
                 <td class="px-6 py-4 border-b border-slate-100 text-slate-500">{{.UpdatedAt.Format "2006-01-02 15:04:05"}}</td>
                 <td class="px-6 py-4 border-b border-slate-100">
-                    <button class="btn btn-secondary btn-sm" hx-get="/web/org/{{$.Context.Org.Slug}}/projects/{{$.Context.Project.Slug}}/storage/{{$.Bucket.Name}}/objects/{{.ID}}" hx-target="#modal-content">View</button>
+                    <button class="btn btn-secondary btn-sm" hx-get="/org/{{$.Context.Org.Slug}}/projects/{{$.Context.Project.Slug}}/storage/{{$.Bucket.Name}}/objects/{{.ID}}" hx-target="#modal-content">View</button>
                 </td>
             </tr>
             {{else}}
@@ -592,7 +592,7 @@ const newObjectFormTemplate = `
     <h3 class="text-lg font-semibold">Upload Object to {{.Bucket.Name}}</h3>
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
-<form hx-post="/web/org/{{.Org.Slug}}/projects/{{.Project.Slug}}/storage/{{.Bucket.Name}}/objects" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
+<form hx-post="/org/{{.Org.Slug}}/projects/{{.Project.Slug}}/storage/{{.Bucket.Name}}/objects" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
     <div class="p-6">
         <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
