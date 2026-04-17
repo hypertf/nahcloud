@@ -24,7 +24,7 @@ const errorTemplate = `<!DOCTYPE html>
 const baseTemplate = `<!DOCTYPE html>
 <html>
 <head>
-    <title>NahCloud Console</title>
+    <title>NahCloud</title>
     <link rel="icon" type="image/png" href="/static/logo.png">
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
     <script>
@@ -39,93 +39,229 @@ const baseTemplate = `<!DOCTYPE html>
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>{{.CSS}}</style>
+    <style>
+    :root {
+        --surface: rgba(255, 255, 255, 0.94);
+        --surface-strong: #ffffff;
+        --line: #d8e3ee;
+        --ink: #0f172a;
+        --muted: #64748b;
+        --accent: #2f6db5;
+        --sidebar: #101a2b;
+        --sidebar-line: rgba(255, 255, 255, 0.08);
+    }
+
+    body {
+        font-family: "IBM Plex Sans", sans-serif;
+        background:
+            radial-gradient(circle at top center, rgba(47, 109, 181, 0.12), transparent 34%),
+            linear-gradient(180deg, #edf3f8 0%, #f7fafc 100%);
+        color: var(--ink);
+    }
+
+    code, pre, .font-mono {
+        font-family: "IBM Plex Mono", monospace;
+    }
+
+    .console-card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        box-shadow: 0 20px 48px rgba(15, 23, 42, 0.08);
+    }
+
+    .console-card-strong {
+        background: var(--surface-strong);
+        border: 1px solid var(--line);
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+    }
+
+    .sidebar-surface {
+        background:
+            radial-gradient(circle at top, rgba(125, 211, 252, 0.12), transparent 28%),
+            linear-gradient(180deg, var(--sidebar) 0%, #17263d 100%);
+        color: #e2e8f0;
+    }
+
+    .sidebar-section-label {
+        margin-bottom: 0.75rem;
+        padding: 0 0.5rem;
+        font-size: 0.68rem;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #7f91ad;
+    }
+
+    .sidebar-link {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        border: 1px solid transparent;
+        border-radius: 1rem;
+        padding: 0.875rem 1rem;
+        color: #cbd5e1;
+        transition: 150ms ease;
+    }
+
+    .sidebar-link:hover {
+        border-color: var(--sidebar-line);
+        background: rgba(255, 255, 255, 0.05);
+        color: #ffffff;
+    }
+
+    .sidebar-link.active {
+        border-color: rgba(125, 211, 252, 0.12);
+        background: rgba(47, 109, 181, 0.18);
+        color: #ffffff;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .sidebar-project-link {
+        display: block;
+        border: 1px solid transparent;
+        border-radius: 1rem;
+        padding: 0.85rem 1rem;
+        transition: 150ms ease;
+    }
+
+    .sidebar-project-link:hover {
+        border-color: var(--sidebar-line);
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .sidebar-project-link.active {
+        border-color: rgba(125, 211, 252, 0.12);
+        background: rgba(255, 255, 255, 0.08);
+    }
+    </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans min-h-screen">
-    <div class="flex min-h-screen">
-        <aside class="w-60 bg-white border-r border-slate-200 py-6 fixed h-screen overflow-y-auto">
-            <div class="px-6 pb-6 border-b border-slate-200 mb-4">
-                <div class="flex items-center gap-3">
-                    <img src="/static/logo.png" alt="NahCloud" class="w-10 h-10 rounded-lg">
-                    <div>
-                        <h1 class="text-xl font-bold text-[#2878B5]">NahCloud</h1>
-                        <span class="text-xs text-slate-500 font-medium">Console</span>
+<body class="min-h-screen">
+    <div class="min-h-screen lg:flex">
+        <aside class="sidebar-surface w-full border-b border-white/10 lg:sticky lg:top-0 lg:h-screen lg:w-[290px] lg:shrink-0 lg:border-b-0 lg:border-r lg:border-white/10">
+            <div class="flex h-full flex-col">
+                <div class="border-b border-white/10 px-6 pb-5 pt-6">
+                    <div class="flex items-center gap-3">
+                        <img src="/static/logo.png" alt="NahCloud" class="h-11 w-11 rounded-2xl bg-white/95 p-2 shadow-lg shadow-black/10 ring-1 ring-white/10">
+                        <div>
+                            <h1 class="text-xl font-semibold tracking-tight text-white">NahCloud</h1>
+                            <p class="text-xs uppercase tracking-[0.24em] text-slate-400">Cloud Console</p>
+                        </div>
                     </div>
                 </div>
-                {{if .Context.Org}}
-                <div class="mt-4 rounded-xl bg-slate-50 px-4 py-3">
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Current Org</p>
-                    <p class="mt-2 text-sm font-semibold text-slate-900">{{.Context.Org.Name}}</p>
-                    <p class="mt-1 text-xs text-slate-500">{{.Context.Org.Slug}}</p>
-                </div>
-                {{end}}
-            </div>
-            {{if .Context.Projects}}
-            <div class="px-6 pb-4 mb-2">
-                <label class="block text-xs text-slate-500 font-medium mb-1.5">Project</label>
-                <select onchange="window.location.href='/projects/' + this.value + '/instances'" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10 transition-all bg-white">
-                    {{range .Context.Projects}}
-                    <option value="{{.Slug}}" {{if and $.Context.Project (eq .Slug $.Context.Project.Slug)}}selected{{end}}>{{.Name}}</option>
+
+                <div class="px-5 py-5">
+                    {{if .Context.Org}}
+                    <div class="rounded-[24px] border border-white/10 bg-white/5 px-4 py-4 backdrop-blur">
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Organization</p>
+                        <p class="mt-2 text-base font-semibold text-white">{{.Context.Org.Name}}</p>
+                        <p class="mt-1 font-mono text-xs text-slate-400">{{.Context.Org.Slug}}</p>
+                        <div class="mt-4 rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-3">
+                            <p class="text-[10px] uppercase tracking-[0.22em] text-slate-400">Current Project</p>
+                            {{if .Context.Project}}
+                            <p class="mt-1 text-sm font-semibold text-white">{{.Context.Project.Name}}</p>
+                            <p class="mt-1 font-mono text-[11px] text-slate-400">{{.Context.Project.Slug}}</p>
+                            {{else}}
+                            <p class="mt-1 text-sm text-slate-300">None selected</p>
+                            {{end}}
+                        </div>
+                    </div>
                     {{end}}
-                </select>
+                </div>
+
+                <nav class="flex-1 overflow-y-auto px-4 pb-6">
+                    <p class="sidebar-section-label">Resources</p>
+                    <div class="space-y-1.5">
+                        <a href="/" class="sidebar-link {{if eq .Context.Section "overview"}}active{{end}}">
+                            <span class="flex items-center gap-3 text-sm font-medium">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 12l9-8 9 8M5 10v10h14V10"></path>
+                                </svg>
+                                Overview
+                            </span>
+                        </a>
+                        <a href="/instances" class="sidebar-link {{if eq .Context.Section "instances"}}active{{end}}">
+                            <span class="flex items-center gap-3 text-sm font-medium">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6h16v4H4zm0 8h16v4H4z"></path>
+                                </svg>
+                                Instances
+                            </span>
+                            <span class="rounded-full px-2.5 py-0.5 text-xs {{if eq .Context.Section "instances"}}bg-white/20 text-white{{else}}bg-white/10 text-slate-300{{end}}">{{.Context.CurrentProjectInstanceCount}}</span>
+                        </a>
+                        <a href="/storage" class="sidebar-link {{if eq .Context.Section "storage"}}active{{end}}">
+                            <span class="flex items-center gap-3 text-sm font-medium">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3zm0 5c0 1.657 3.582 3 8 3s8-1.343 8-3m-16 5c0 1.657 3.582 3 8 3s8-1.343 8-3"></path>
+                                </svg>
+                                Storage
+                            </span>
+                            <span class="rounded-full px-2.5 py-0.5 text-xs {{if eq .Context.Section "storage"}}bg-white/20 text-white{{else}}bg-white/10 text-slate-300{{end}}">{{.Context.CurrentProjectBucketCount}}</span>
+                        </a>
+                        <a href="/metadata" class="sidebar-link {{if eq .Context.Section "metadata"}}active{{end}}">
+                            <span class="flex items-center gap-3 text-sm font-medium">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 7h.01M7 3h5c.53 0 1.04.21 1.41.59l7 7a2 2 0 010 2.82l-7 7a2 2 0 01-2.82 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"></path>
+                                </svg>
+                                Metadata
+                            </span>
+                            <span class="rounded-full px-2.5 py-0.5 text-xs {{if eq .Context.Section "metadata"}}bg-white/20 text-white{{else}}bg-white/10 text-slate-300{{end}}">{{.Context.MetadataCount}}</span>
+                        </a>
+                        <a href="/projects" class="sidebar-link {{if eq .Context.Section "projects"}}active{{end}}">
+                            <span class="flex items-center gap-3 text-sm font-medium">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7h5l2 2h11v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"></path>
+                                </svg>
+                                Projects
+                            </span>
+                            <span class="rounded-full px-2.5 py-0.5 text-xs {{if eq .Context.Section "projects"}}bg-white/20 text-white{{else}}bg-white/10 text-slate-300{{end}}">{{len .Context.Projects}}</span>
+                        </a>
+                        <a href="/settings" class="sidebar-link {{if eq .Context.Section "settings"}}active{{end}}">
+                            <span class="flex items-center gap-3 text-sm font-medium">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317a1 1 0 011.35-.936l1.488.595a1 1 0 00.873 0l1.488-.595a1 1 0 011.35.936l.116 1.598a1 1 0 00.51.816l1.373.786a1 1 0 01.39 1.39l-.798 1.369a1 1 0 000 .99l.798 1.369a1 1 0 01-.39 1.39l-1.373.786a1 1 0 00-.51.816l-.116 1.598a1 1 0 01-1.35.936l-1.488-.595a1 1 0 00-.873 0l-1.488.595a1 1 0 01-1.35-.936l-.116-1.598a1 1 0 00-.51-.816l-1.373-.786a1 1 0 01-.39-1.39l.798-1.369a1 1 0 000-.99l-.798-1.369a1 1 0 01.39-1.39l1.373-.786a1 1 0 00.51-.816l.116-1.598z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                </svg>
+                                Settings
+                            </span>
+                        </a>
+                    </div>
+
+                    <div class="mt-8">
+                        <div class="mb-3 flex items-center justify-between px-2">
+                            <p class="sidebar-section-label !mb-0 !px-0">Project Context</p>
+                            <button class="rounded-full bg-white px-3 py-1 text-xs font-medium text-[var(--accent)] shadow-sm shadow-black/10" hx-get="/projects/new?redirect_to=/" hx-target="#modal-content">New</button>
+                        </div>
+                        <div class="space-y-2">
+                            {{range .Context.Projects}}
+                            <a href="/projects/{{.Slug}}?next={{$.Context.Section}}" class="sidebar-project-link {{if and $.Context.Project (eq $.Context.Project.Slug .Slug)}}active{{end}}">
+                                <p class="text-sm font-medium text-white">{{.Name}}</p>
+                                <p class="mt-1 font-mono text-[11px] text-slate-400">{{.Slug}}</p>
+                            </a>
+                            {{else}}
+                            <div class="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-slate-400">
+                                No projects yet.
+                            </div>
+                            {{end}}
+                        </div>
+                    </div>
+                </nav>
             </div>
-            {{end}}
-            <nav class="px-3">
-                {{if .Context.Org}}
-                <a href="/" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
-                    <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10.75L12 3l9 7.75V20a1 1 0 01-1 1h-5.5a.5.5 0 01-.5-.5V15a2 2 0 00-4 0v5.5a.5.5 0 01-.5.5H4a1 1 0 01-1-1v-9.25z"></path>
-                    </svg>
-                    Home
-                </a>
-                <a href="/projects" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
-                    <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
-                    </svg>
-                    Projects
-                </a>
-                {{end}}
-                {{if .Context.Project}}
-                <a href="/projects/{{.Context.Project.Slug}}/instances" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
-                    <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path>
-                     </svg>
-                     Instances
-                 </a>
-                 <a href="/projects/{{.Context.Project.Slug}}/storage" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
-                    <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
-                    </svg>
-                    Storage
-                </a>
-                {{end}}
-                {{if .Context.Org}}
-                <a href="/metadata" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
-                    <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
-                    </svg>
-                    Metadata
-                </a>
-                <a href="/settings" class="flex items-center gap-3 px-4 py-3 text-slate-500 rounded-lg font-medium text-sm hover:bg-slate-50 hover:text-slate-800 transition-all mb-1">
-                    <svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317a1 1 0 011.35-.936l1.488.595a1 1 0 00.873 0l1.488-.595a1 1 0 011.35.936l.116 1.598a1 1 0 00.51.816l1.373.786a1 1 0 01.39 1.39l-.798 1.369a1 1 0 000 .99l.798 1.369a1 1 0 01-.39 1.39l-1.373.786a1 1 0 00-.51.816l-.116 1.598a1 1 0 01-1.35.936l-1.488-.595a1 1 0 00-.873 0l-1.488.595a1 1 0 01-1.35-.936l-.116-1.598a1 1 0 00-.51-.816l-1.373-.786a1 1 0 01-.39-1.39l.798-1.369a1 1 0 000-.99l-.798-1.369a1 1 0 01.39-1.39l1.373-.786a1 1 0 00.51-.816l.116-1.598z"></path>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                    </svg>
-                    Settings
-                </a>
-                {{end}}
-            </nav>
         </aside>
-        <main class="flex-1 ml-60 p-8">
-            <div id="content" class="max-w-6xl w-full">
-                {{block "content" .}}{{end}}
+
+        <main class="min-w-0 flex-1">
+            <div class="mx-auto min-h-screen max-w-7xl px-5 py-6 sm:px-6 lg:px-8 lg:py-8">
+                <div id="content">
+                    {{block "content" .}}{{end}}
+                </div>
             </div>
         </main>
     </div>
 
-    <div id="modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm items-start justify-center" onclick="if(event.target === this) this.style.display='none'">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mt-[10vh] h-fit overflow-hidden" onclick="event.stopPropagation()">
+    <div id="modal" class="fixed inset-0 z-50 hidden items-start justify-center bg-slate-950/60 px-4 pt-16 backdrop-blur-sm" onclick="if(event.target === this) this.style.display='none'">
+        <div class="w-full max-w-lg overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-2xl" onclick="event.stopPropagation()">
             <div id="modal-content"></div>
         </div>
     </div>
@@ -146,141 +282,229 @@ const baseTemplate = `<!DOCTYPE html>
 
 const homeTemplate = `{{define "content"}}
 <div class="space-y-6">
-    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    {{if .Context.Project}}
+    <header class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
         <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Organization Home</p>
-            <h2 class="mt-2 text-3xl font-semibold text-slate-900">{{.Context.Org.Name}}</h2>
-            <p class="mt-2 text-sm text-slate-500">Everything in this browser session belongs to <code class="rounded bg-slate-100 px-2 py-1 text-slate-700">{{.Context.Org.Slug}}</code>.</p>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Overview</p>
+            <div class="mt-3 flex flex-wrap items-center gap-3">
+                <h2 class="text-3xl font-semibold tracking-tight text-slate-950">{{.Context.Project.Name}}</h2>
+                <span class="rounded-full border border-slate-200 bg-white px-3 py-1 font-mono text-xs text-slate-600">{{.Context.Project.Slug}}</span>
+            </div>
+            <p class="mt-2 text-sm text-slate-600">{{.Context.Org.Name}}</p>
         </div>
         <div class="flex flex-wrap gap-3">
-            <button class="btn btn-primary" hx-get="/projects/new" hx-target="#modal-content">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                </svg>
-                New Project
-            </button>
-            <a href="/settings" class="btn btn-secondary">Settings</a>
+            <button class="btn btn-secondary" hx-get="/projects/new?redirect_to=/" hx-target="#modal-content">New Project</button>
+            <button class="btn btn-secondary" hx-get="/projects/{{.Context.Project.Slug}}/storage/buckets/new" hx-target="#modal-content">New Bucket</button>
+            <button class="btn btn-primary" hx-get="/projects/{{.Context.Project.Slug}}/instances/new" hx-target="#modal-content">New Instance</button>
         </div>
+    </header>
+
+    <div class="grid gap-4 md:grid-cols-3">
+        <a href="/instances" class="console-card rounded-[24px] p-5 transition hover:-translate-y-0.5 hover:shadow-[0_24px_52px_rgba(15,23,42,0.1)]">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Instances</p>
+            <p class="mt-4 text-4xl font-semibold text-slate-950">{{.Context.CurrentProjectInstanceCount}}</p>
+            <p class="mt-2 text-sm text-slate-600">Compute resources in the current project.</p>
+        </a>
+        <a href="/storage" class="console-card rounded-[24px] p-5 transition hover:-translate-y-0.5 hover:shadow-[0_24px_52px_rgba(15,23,42,0.1)]">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Buckets</p>
+            <p class="mt-4 text-4xl font-semibold text-slate-950">{{.Context.CurrentProjectBucketCount}}</p>
+            <p class="mt-2 text-sm text-slate-600">Storage buckets for this project.</p>
+        </a>
+        <a href="/metadata" class="console-card rounded-[24px] p-5 transition hover:-translate-y-0.5 hover:shadow-[0_24px_52px_rgba(15,23,42,0.1)]">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Metadata</p>
+            <p class="mt-4 text-4xl font-semibold text-slate-950">{{.Context.MetadataCount}}</p>
+            <p class="mt-2 text-sm text-slate-600">Organization-wide key-value paths.</p>
+        </a>
     </div>
 
-    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Projects</p>
-            <p class="mt-3 text-3xl font-semibold text-slate-900">{{.ProjectCount}}</p>
-        </div>
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Instances</p>
-            <p class="mt-3 text-3xl font-semibold text-slate-900">{{.InstanceCount}}</p>
-        </div>
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Buckets</p>
-            <p class="mt-3 text-3xl font-semibold text-slate-900">{{.BucketCount}}</p>
-        </div>
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Metadata</p>
-            <p class="mt-3 text-3xl font-semibold text-slate-900">{{.MetadataCount}}</p>
-        </div>
-    </div>
-
-    {{if .HasResources}}
-    <div class="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <section class="console-card overflow-hidden rounded-[28px]">
             <div class="flex items-center justify-between border-b border-slate-200 px-6 py-5">
-                <h3 class="text-lg font-semibold">Projects</h3>
-                <a href="/projects" class="text-sm font-medium text-[#2878B5] hover:underline">Manage</a>
+                <div>
+                    <p class="text-lg font-semibold text-slate-950">Instances</p>
+                    <p class="mt-1 text-sm text-slate-500">{{.Context.Project.Name}}</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <a href="/instances" class="text-sm font-medium text-[var(--accent)] hover:underline">Open</a>
+                    <button class="btn btn-primary" hx-get="/projects/{{.Context.Project.Slug}}/instances/new" hx-target="#modal-content">New Instance</button>
+                </div>
             </div>
-            <div class="divide-y divide-slate-100">
-                {{range .Context.Projects}}
-                <a href="/projects/{{.Slug}}/instances" class="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors">
+            <table class="w-full">
+                <thead>
+                    <tr>
+                        <th class="bg-slate-50 px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Name</th>
+                        <th class="bg-slate-50 px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Region</th>
+                        <th class="bg-slate-50 px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Image</th>
+                        <th class="bg-slate-50 px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Instances}}
+                    <tr class="border-t border-slate-100">
+                        <td class="px-6 py-4">
+                            <button class="text-left font-medium text-[var(--accent)] hover:underline" hx-get="/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}/edit" hx-target="#modal-content">{{.Name}}</button>
+                        </td>
+                        <td class="px-6 py-4"><code class="rounded bg-slate-100 px-2 py-0.5 text-sm">{{.Region}}</code></td>
+                        <td class="px-6 py-4"><code class="rounded bg-slate-100 px-2 py-0.5 text-sm">{{.Image}}</code></td>
+                        <td class="px-6 py-4">
+                            {{if eq .Status "running"}}
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                Running
+                            </span>
+                            {{else}}
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
+                                <span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+                                Stopped
+                            </span>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="4" class="px-6 py-12 text-center text-sm text-slate-500">No instances yet.</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </section>
+
+        <div class="space-y-6">
+            <section class="console-card overflow-hidden rounded-[28px]">
+                <div class="flex items-center justify-between border-b border-slate-200 px-6 py-5">
                     <div>
-                        <p class="font-medium text-slate-900">{{.Name}}</p>
-                        <p class="mt-1 text-sm text-slate-500">{{.Slug}}</p>
+                        <p class="text-lg font-semibold text-slate-950">Storage</p>
+                        <p class="mt-1 text-sm text-slate-500">{{.Context.Project.Name}}</p>
                     </div>
-                    <svg class="h-5 w-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                    </svg>
-                </a>
-                {{else}}
-                <div class="px-6 py-8 text-sm text-slate-500">No projects yet.</div>
-                {{end}}
-            </div>
-        </div>
-        <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 class="text-lg font-semibold">Share This Org</h3>
-            <p class="mt-2 text-sm text-slate-600">Anyone with this link joins the same org in their own browser session.</p>
-            <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Permalink</p>
-                <p class="mt-2 break-all font-mono text-sm text-slate-700">{{.Permalink}}</p>
-            </div>
-            <a href="/settings" class="mt-4 inline-flex items-center text-sm font-medium text-[#2878B5] hover:underline">Open sharing and reset settings</a>
+                    <a href="/storage" class="text-sm font-medium text-[var(--accent)] hover:underline">Open</a>
+                </div>
+                <div class="divide-y divide-slate-100">
+                    {{range .Buckets}}
+                    <a href="/projects/{{$.Context.Project.Slug}}/storage/{{.Name}}" class="flex items-center justify-between px-6 py-4 transition hover:bg-slate-50">
+                        <div>
+                            <p class="font-medium text-slate-900">{{.Name}}</p>
+                            <p class="mt-1 text-xs text-slate-500">{{.UpdatedAt.Format "2006-01-02 15:04:05"}}</p>
+                        </div>
+                        <svg class="h-5 w-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                    </a>
+                    {{else}}
+                    <div class="px-6 py-12 text-center text-sm text-slate-500">No buckets yet.</div>
+                    {{end}}
+                </div>
+            </section>
+
+            <section class="console-card overflow-hidden rounded-[28px]">
+                <div class="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+                    <div>
+                        <p class="text-lg font-semibold text-slate-950">Metadata</p>
+                        <p class="mt-1 text-sm text-slate-500">{{.Context.Org.Name}}</p>
+                    </div>
+                    <a href="/metadata" class="text-sm font-medium text-[var(--accent)] hover:underline">Open</a>
+                </div>
+                <div class="divide-y divide-slate-100">
+                    {{range .Metadata}}
+                    <div class="px-6 py-4">
+                        <p class="font-mono text-xs text-slate-500">{{.Path}}</p>
+                        <p class="mt-2 text-sm text-slate-900">{{.Value}}</p>
+                    </div>
+                    {{else}}
+                    <div class="px-6 py-12 text-center text-sm text-slate-500">No metadata yet.</div>
+                    {{end}}
+                </div>
+            </section>
         </div>
     </div>
     {{else}}
-    <div class="rounded-2xl border border-slate-200 bg-white p-10 shadow-sm">
-        <span class="inline-flex items-center rounded-full bg-[#2878B5]/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#2878B5]">Blank Canvas</span>
-        <h3 class="mt-4 text-2xl font-semibold text-slate-900">This org starts empty</h3>
-        <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-600">NahCloud created a dedicated org for this browser, but it did not create any projects, instances, buckets, or metadata. Add what you need, or share the permalink to collaborate in the same org.</p>
-        <div class="mt-6 flex flex-wrap gap-3">
-            <button class="btn btn-primary" hx-get="/projects/new" hx-target="#modal-content">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                </svg>
-                Create Your First Project
-            </button>
-            <a href="/metadata" class="btn btn-secondary">Open Metadata</a>
-            <a href="/settings" class="btn btn-secondary">Share Or Reset</a>
+    <header class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Overview</p>
+            <h2 class="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{{.Context.Org.Name}}</h2>
+            <p class="mt-2 font-mono text-sm text-slate-500">{{.Context.Org.Slug}}</p>
         </div>
-        <div class="mt-8 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-            <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Permalink</p>
-            <p class="mt-2 break-all font-mono text-sm text-slate-700">{{.Permalink}}</p>
+        <div class="flex flex-wrap gap-3">
+            <a href="/settings" class="btn btn-secondary">Settings</a>
+            <button class="btn btn-primary" hx-get="/projects/new?redirect_to=/" hx-target="#modal-content">New Project</button>
         </div>
-    </div>
+    </header>
+
+    <section class="console-card overflow-hidden rounded-[28px]">
+        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+            <div>
+                <p class="text-lg font-semibold text-slate-950">Projects</p>
+                <p class="mt-1 text-sm text-slate-500">Create a project to start adding resources.</p>
+            </div>
+            <button class="btn btn-primary" hx-get="/projects/new?redirect_to=/" hx-target="#modal-content">New Project</button>
+        </div>
+        <table class="w-full">
+            <thead>
+                <tr>
+                    <th class="bg-slate-50 px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Slug</th>
+                    <th class="bg-slate-50 px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Name</th>
+                    <th class="bg-slate-50 px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Context.Projects}}
+                <tr class="border-t border-slate-100">
+                    <td class="px-6 py-4"><a href="/projects/{{.Slug}}?next=overview" class="font-mono text-sm text-[var(--accent)] hover:underline">{{.Slug}}</a></td>
+                    <td class="px-6 py-4 font-medium text-slate-900">{{.Name}}</td>
+                    <td class="px-6 py-4 text-sm text-slate-500">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="3" class="px-6 py-16 text-center text-sm text-slate-500">No projects yet.</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </section>
     {{end}}
-</div>
 {{end}}`
 
 const settingsTemplate = `{{define "content"}}
 <div class="max-w-5xl space-y-6">
     <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Settings</p>
-        <h2 class="mt-2 text-3xl font-semibold text-slate-900">Session And Sharing</h2>
-        <p class="mt-2 text-sm text-slate-600">Manage this org, share a stable link, or reset everything back to a blank canvas.</p>
+        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Settings</p>
+        <h2 class="mt-2 text-4xl font-semibold tracking-tight text-slate-900">Session And Sharing</h2>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-600">Manage this org, share a stable link, or reset everything back to an empty state.</p>
     </div>
 
     {{if .ResetDone}}
-    <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+    <div class="rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700 shadow-sm">
         Organization reset complete. This org is empty again and keeps the same permalink.
     </div>
     {{end}}
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)]">
         <div class="space-y-6">
-            <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div class="rounded-[28px] border border-black/5 bg-white/85 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.06)] backdrop-blur">
                 <h3 class="text-lg font-semibold">Organization</h3>
                 <div class="mt-5 grid gap-4 sm:grid-cols-2">
                     <div>
-                        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Name</p>
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Name</p>
                         <p class="mt-2 text-sm font-medium text-slate-900">{{.Context.Org.Name}}</p>
                     </div>
                     <div>
-                        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Slug</p>
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Slug</p>
                         <p class="mt-2 font-mono text-sm text-slate-700">{{.Context.Org.Slug}}</p>
                     </div>
                 </div>
             </div>
 
-            <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div class="rounded-[28px] border border-black/5 bg-white/85 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.06)] backdrop-blur">
                 <h3 class="text-lg font-semibold">Permalink</h3>
                 <p class="mt-2 text-sm text-slate-600">Anyone with this link will enter the same org and get their own browser session for it.</p>
                 <div class="mt-4 flex flex-col gap-3 sm:flex-row">
-                    <input id="org-permalink" type="text" readonly value="{{.Permalink}}" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 focus:outline-none">
+                    <input id="org-permalink" type="text" readonly value="{{.Permalink}}" class="w-full rounded-2xl border border-black/5 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:outline-none">
                     <button type="button" class="btn btn-secondary" onclick="copyPermalink()">Copy Link</button>
                 </div>
             </div>
         </div>
 
-        <div class="rounded-xl border border-red-200 bg-white shadow-sm overflow-hidden h-fit">
-            <div class="border-b border-red-100 bg-red-50/60 px-6 py-5">
+        <div class="overflow-hidden rounded-[28px] border border-red-200 bg-white/85 shadow-[0_18px_40px_rgba(15,23,42,0.06)] backdrop-blur h-fit">
+            <div class="border-b border-red-100 bg-red-50/70 px-6 py-5">
                 <h3 class="text-lg font-semibold text-slate-900">Reset Organization</h3>
                 <p class="mt-1 text-sm text-slate-600">Delete everything and return to the initial blank state.</p>
             </div>
@@ -310,10 +534,10 @@ function copyPermalink() {
 {{end}}`
 
 const projectsTemplate = `{{define "content"}}
-<div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+<div class="overflow-hidden rounded-[28px] border border-black/5 bg-white/85 shadow-[0_18px_40px_rgba(15,23,42,0.06)] backdrop-blur">
     <div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
         <h2 class="text-lg font-semibold">Projects</h2>
-        <button class="btn btn-primary" hx-get="/projects/new" hx-target="#modal-content">
+        <button class="btn btn-primary" hx-get="/projects/new?redirect_to=/projects" hx-target="#modal-content">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -333,7 +557,7 @@ const projectsTemplate = `{{define "content"}}
             {{range .Projects}}
             <tr class="hover:bg-slate-50">
                 <td class="px-6 py-4 border-b border-slate-100">
-                    <a href="/projects/{{.Slug}}/instances" class="font-medium text-[#2878B5] hover:underline">{{.Slug}}</a>
+                    <a href="/projects/{{.Slug}}?next=overview" class="font-medium text-[#2878B5] hover:underline">{{.Slug}}</a>
                 </td>
                 <td class="px-6 py-4 border-b border-slate-100">{{.Name}}</td>
                 <td class="px-6 py-4 border-b border-slate-100 text-slate-500">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
@@ -360,6 +584,7 @@ const newProjectFormTemplate = `
     <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="document.getElementById('modal').style.display='none'">&times;</button>
 </div>
 <form hx-post="/projects" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
+    <input type="hidden" name="redirect_to" value="{{if .RedirectTo}}{{.RedirectTo}}{{else}}/{{end}}">
     <div class="p-6">
         <div id="form-error" class="mb-4"></div>
         <div class="mb-5">
@@ -402,16 +627,22 @@ const editProjectFormTemplate = `
 </form>`
 
 const instancesTemplate = `{{define "content"}}
-<div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-    <div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
-        <h2 class="text-lg font-semibold">Instances</h2>
+<div class="overflow-hidden rounded-[28px] border border-black/5 bg-white/85 shadow-[0_18px_40px_rgba(15,23,42,0.06)] backdrop-blur">
+    <div class="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+        <div>
+            <h2 class="text-lg font-semibold">Instances</h2>
+            {{if .Context.Project}}<p class="mt-1 text-sm text-slate-500">{{.Context.Project.Name}}</p>{{end}}
+        </div>
+        {{if .Context.Project}}
         <button class="btn btn-primary" hx-get="/projects/{{.Context.Project.Slug}}/instances/new" hx-target="#modal-content">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
             New Instance
         </button>
+        {{end}}
     </div>
+    {{if .Context.Project}}
     <table class="w-full">
         <thead>
             <tr>
@@ -456,11 +687,16 @@ const instancesTemplate = `{{define "content"}}
             </tr>
             {{else}}
             <tr>
-                <td colspan="7" class="px-6 py-8 text-center text-slate-500">No instances found</td>
+                <td colspan="7" class="px-6 py-8 text-center text-slate-500">No instances yet for this project.</td>
             </tr>
             {{end}}
         </tbody>
     </table>
+    {{else}}
+    <div class="px-6 py-12 text-center">
+        <p class="text-sm text-slate-500">Create a project to start adding instances.</p>
+    </div>
+    {{end}}
 </div>
 {{end}}`
 
@@ -652,16 +888,22 @@ const editMetadataFormTemplate = `
 </form>`
 
 const storageTemplate = `{{define "content"}}
-<div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-    <div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
-        <h2 class="text-lg font-semibold">Storage Buckets</h2>
+<div class="overflow-hidden rounded-[28px] border border-black/5 bg-white/85 shadow-[0_18px_40px_rgba(15,23,42,0.06)] backdrop-blur">
+    <div class="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+        <div>
+            <h2 class="text-lg font-semibold">Storage Buckets</h2>
+            {{if .Context.Project}}<p class="mt-1 text-sm text-slate-500">{{.Context.Project.Name}}</p>{{end}}
+        </div>
+        {{if .Context.Project}}
         <button class="btn btn-primary" hx-get="/projects/{{.Context.Project.Slug}}/storage/buckets/new" hx-target="#modal-content">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
             New Bucket
         </button>
+        {{end}}
     </div>
+    {{if .Context.Project}}
     <table class="w-full">
         <thead>
             <tr>
@@ -686,11 +928,16 @@ const storageTemplate = `{{define "content"}}
             </tr>
             {{else}}
             <tr>
-                <td colspan="3" class="px-6 py-8 text-center text-slate-500">No buckets found</td>
+                <td colspan="3" class="px-6 py-8 text-center text-slate-500">No buckets yet for this project.</td>
             </tr>
             {{end}}
         </tbody>
     </table>
+    {{else}}
+    <div class="px-6 py-12 text-center">
+        <p class="text-sm text-slate-500">Create a project to start storing objects.</p>
+    </div>
+    {{end}}
 </div>
 {{end}}`
 
@@ -717,7 +964,7 @@ const bucketObjectsTemplate = `{{define "content"}}
 <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
     <div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
         <div class="flex items-center gap-3">
-            <a href="/projects/{{.Context.Project.Slug}}/storage" class="btn btn-secondary btn-sm">
+            <a href="/storage" class="btn btn-secondary btn-sm">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
                 </svg>

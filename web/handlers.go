@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/hypertf/nahcloud/domain"
@@ -14,8 +15,9 @@ import (
 )
 
 const (
-	sessionCookieName   = "nah_session"
-	sessionCookieMaxAge = 30 * 24 * 60 * 60
+	sessionCookieName    = "nah_session"
+	sessionCookieMaxAge  = 30 * 24 * 60 * 60
+	currentProjectCookie = "nah_project"
 )
 
 // Handler handles web console requests
@@ -30,9 +32,13 @@ func NewHandler(svc *service.Service) *Handler {
 
 // PageContext contains common data for all pages
 type PageContext struct {
-	Org      *domain.Organization
-	Project  *domain.Project
-	Projects []*domain.Project
+	Org                         *domain.Organization
+	Project                     *domain.Project
+	Projects                    []*domain.Project
+	Section                     string
+	CurrentProjectInstanceCount int
+	CurrentProjectBucketCount   int
+	MetadataCount               int
 }
 
 // resolveOrg gets the organization from context (set by middleware)
@@ -65,10 +71,37 @@ func (h *Handler) resolveProject(r *http.Request) (*domain.Organization, *domain
 	return org, project, nil
 }
 
-// getPageContext builds the common page context
-func (h *Handler) getPageContext(org *domain.Organization, project *domain.Project) (*PageContext, error) {
-	var projects []*domain.Project
-	var err error
+func (h *Handler) resolveCurrentProject(w http.ResponseWriter, r *http.Request, org *domain.Organization) (*domain.Project, error) {
+	if org == nil {
+		return nil, nil
+	}
+
+	if cookie, err := r.Cookie(currentProjectCookie); err == nil && cookie.Value != "" {
+		project, err := h.service.GetProjectBySlug(org.ID, cookie.Value)
+		if err == nil {
+			return project, nil
+		}
+	}
+
+	projects, err := h.service.ListProjects(domain.ProjectListOptions{OrgID: org.ID})
+	if err != nil {
+		return nil, err
+	}
+	if len(projects) == 0 {
+		h.clearCurrentProjectCookie(w)
+		return nil, nil
+	}
+
+	h.setCurrentProjectCookie(w, projects[0].Slug)
+	return projects[0], nil
+}
+
+// getPageContext builds the common page context.
+func (h *Handler) getPageContext(w http.ResponseWriter, r *http.Request, org *domain.Organization, project *domain.Project, section string) (*PageContext, error) {
+	var (
+		projects []*domain.Project
+		err      error
+	)
 	if org != nil {
 		projects, err = h.service.ListProjects(domain.ProjectListOptions{OrgID: org.ID})
 		if err != nil {
@@ -76,10 +109,46 @@ func (h *Handler) getPageContext(org *domain.Organization, project *domain.Proje
 		}
 	}
 
+	if project == nil {
+		project, err = h.resolveCurrentProject(w, r, org)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	instanceCount := 0
+	bucketCount := 0
+	if project != nil {
+		instances, err := h.service.ListInstances(domain.InstanceListOptions{ProjectID: project.ID})
+		if err != nil {
+			return nil, err
+		}
+		instanceCount = len(instances)
+
+		buckets, err := h.service.ListBuckets(domain.BucketListOptions{ProjectID: project.ID})
+		if err != nil {
+			return nil, err
+		}
+		bucketCount = len(buckets)
+	}
+
+	metadataCount := 0
+	if org != nil {
+		metadata, err := h.service.ListMetadata(domain.MetadataListOptions{OrgID: org.ID})
+		if err != nil {
+			return nil, err
+		}
+		metadataCount = len(visibleMetadata(metadata))
+	}
+
 	return &PageContext{
-		Org:      org,
-		Project:  project,
-		Projects: projects,
+		Org:                         org,
+		Project:                     project,
+		Projects:                    projects,
+		Section:                     section,
+		CurrentProjectInstanceCount: instanceCount,
+		CurrentProjectBucketCount:   bucketCount,
+		MetadataCount:               metadataCount,
 	}, nil
 }
 
@@ -105,13 +174,86 @@ func (h *Handler) setSessionCookie(w http.ResponseWriter, token string) {
 	})
 }
 
+func (h *Handler) setCurrentProjectCookie(w http.ResponseWriter, slug string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     currentProjectCookie,
+		Value:    slug,
+		Path:     "/",
+		MaxAge:   sessionCookieMaxAge,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (h *Handler) clearCurrentProjectCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     currentProjectCookie,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (h *Handler) currentSectionRedirect(section string) string {
+	switch section {
+	case "overview":
+		return "/"
+	case "instances":
+		return "/instances"
+	case "storage":
+		return "/storage"
+	case "metadata":
+		return "/metadata"
+	case "projects":
+		return "/projects"
+	case "settings":
+		return "/settings"
+	default:
+		return "/"
+	}
+}
+
+func visibleMetadata(metadata []*domain.Metadata) []*domain.Metadata {
+	filtered := make([]*domain.Metadata, 0, len(metadata))
+	for _, item := range metadata {
+		if strings.HasPrefix(item.Path, ".nahcloud/") {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
+}
+
+func limitMetadata(items []*domain.Metadata, limit int) []*domain.Metadata {
+	if len(items) <= limit {
+		return items
+	}
+	return items[:limit]
+}
+
+func limitInstances(items []*domain.Instance, limit int) []*domain.Instance {
+	if len(items) <= limit {
+		return items
+	}
+	return items[:limit]
+}
+
+func limitBuckets(items []*domain.Bucket, limit int) []*domain.Bucket {
+	if len(items) <= limit {
+		return items
+	}
+	return items[:limit]
+}
+
 // ServeLogo serves the static logo
 func (h *Handler) ServeLogo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Write(static.Logo)
 }
 
-// Dashboard shows the org home page.
+// Dashboard shows the current-project console surface.
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	org, err := h.resolveOrg(r)
 	if err != nil {
@@ -119,10 +261,26 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, err := h.getPageContext(org, nil)
+	ctx, err := h.getPageContext(w, r, org, nil, "overview")
 	if err != nil {
 		h.renderError(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	var instances []*domain.Instance
+	var buckets []*domain.Bucket
+	if ctx.Project != nil {
+		instances, err = h.service.ListInstances(domain.InstanceListOptions{ProjectID: ctx.Project.ID})
+		if err != nil {
+			h.renderError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		buckets, err = h.service.ListBuckets(domain.BucketListOptions{ProjectID: ctx.Project.ID})
+		if err != nil {
+			h.renderError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	metadata, err := h.service.ListMetadata(domain.MetadataListOptions{OrgID: org.ID})
@@ -131,35 +289,17 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	instanceCount := 0
-	bucketCount := 0
-	for _, project := range ctx.Projects {
-		instances, err := h.service.ListInstances(domain.InstanceListOptions{ProjectID: project.ID})
-		if err != nil {
-			h.renderError(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		instanceCount += len(instances)
-
-		buckets, err := h.service.ListBuckets(domain.BucketListOptions{ProjectID: project.ID})
-		if err != nil {
-			h.renderError(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		bucketCount += len(buckets)
-	}
+	metadata = visibleMetadata(metadata)
 
 	w.Header().Set("Content-Type", "text/html")
 	tmpl := template.Must(template.New("home").Parse(baseTemplate + homeTemplate))
 	tmpl.Execute(w, map[string]interface{}{
-		"CSS":           template.CSS(static.CSS),
-		"Context":       ctx,
-		"Permalink":     h.organizationPermalink(r, org.Slug),
-		"HasResources":  len(ctx.Projects) > 0 || len(metadata) > 0,
-		"ProjectCount":  len(ctx.Projects),
-		"InstanceCount": instanceCount,
-		"BucketCount":   bucketCount,
-		"MetadataCount": len(metadata),
+		"CSS":       template.CSS(static.CSS),
+		"Context":   ctx,
+		"Permalink": h.organizationPermalink(r, org.Slug),
+		"Instances": limitInstances(instances, 8),
+		"Buckets":   limitBuckets(buckets, 8),
+		"Metadata":  limitMetadata(metadata, 8),
 	})
 }
 
@@ -200,7 +340,7 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, err := h.getPageContext(org, nil)
+	ctx, err := h.getPageContext(w, r, org, nil, "settings")
 	if err != nil {
 		h.renderError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -229,7 +369,20 @@ func (h *Handler) ResetOrganization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.clearCurrentProjectCookie(w)
 	http.Redirect(w, r, "/settings?reset=1", http.StatusSeeOther)
+}
+
+// SelectProject updates the current project cookie and redirects to the requested section.
+func (h *Handler) SelectProject(w http.ResponseWriter, r *http.Request) {
+	_, project, err := h.resolveProject(r)
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	h.setCurrentProjectCookie(w, project.Slug)
+	http.Redirect(w, r, h.currentSectionRedirect(r.URL.Query().Get("next")), http.StatusFound)
 }
 
 // renderError renders a full page error
@@ -258,6 +411,10 @@ func (h *Handler) renderFormError(w http.ResponseWriter, message string) {
 	w.Write([]byte(html))
 }
 
+func isHTMXRequest(r *http.Request) bool {
+	return r.Header.Get("HX-Request") == "true"
+}
+
 // Project Handlers
 
 // ListProjects handles GET /web/org/{org}/projects
@@ -274,12 +431,7 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var defaultProject *domain.Project
-	if len(projects) > 0 {
-		defaultProject = projects[0]
-	}
-
-	ctx, err := h.getPageContext(org, defaultProject)
+	ctx, err := h.getPageContext(w, r, org, nil, "projects")
 	if err != nil {
 		h.renderError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -304,7 +456,10 @@ func (h *Handler) NewProjectForm(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html")
 	tmpl := template.Must(template.New("new-project").Parse(newProjectFormTemplate))
-	tmpl.Execute(w, map[string]interface{}{"Org": org})
+	tmpl.Execute(w, map[string]interface{}{
+		"Org":        org,
+		"RedirectTo": r.URL.Query().Get("redirect_to"),
+	})
 }
 
 // CreateProject handles POST /web/org/{org}/projects
@@ -325,9 +480,23 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		Name: r.FormValue("name"),
 	}
 
-	_, err = h.service.CreateProject(org.ID, req)
+	createdProject, err := h.service.CreateProject(org.ID, req)
 	if err != nil {
 		h.renderFormError(w, err.Error())
+		return
+	}
+
+	if createdProject != nil {
+		h.setCurrentProjectCookie(w, createdProject.Slug)
+	}
+
+	if isHTMXRequest(r) {
+		redirectTo := r.FormValue("redirect_to")
+		if redirectTo == "" {
+			redirectTo = "/"
+		}
+		w.Header().Set("HX-Redirect", redirectTo)
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -342,6 +511,7 @@ func (h *Handler) EditProjectForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setCurrentProjectCookie(w, project.Slug)
 	w.Header().Set("Content-Type", "text/html")
 	tmpl := template.Must(template.New("edit-project").Parse(editProjectFormTemplate))
 	tmpl.Execute(w, map[string]interface{}{"Org": org, "Project": project})
@@ -385,29 +555,28 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if cookie, err := r.Cookie(currentProjectCookie); err == nil && cookie.Value == project.Slug {
+		h.clearCurrentProjectCookie(w)
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
 // Instance Handlers
 
-// ListInstances handles GET /web/org/{org}/projects/{project}/instances
-func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
-	org, project, err := h.resolveProject(r)
-	if err != nil {
-		h.renderError(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	ctx, err := h.getPageContext(org, project)
+func (h *Handler) renderInstancesPage(w http.ResponseWriter, r *http.Request, org *domain.Organization, project *domain.Project) {
+	ctx, err := h.getPageContext(w, r, org, project, "instances")
 	if err != nil {
 		h.renderError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	instances, err := h.service.ListInstances(domain.InstanceListOptions{ProjectID: project.ID})
-	if err != nil {
-		h.renderError(w, err.Error(), http.StatusInternalServerError)
-		return
+	var instances []*domain.Instance
+	if ctx.Project != nil {
+		instances, err = h.service.ListInstances(domain.InstanceListOptions{ProjectID: ctx.Project.ID})
+		if err != nil {
+			h.renderError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/html")
@@ -419,6 +588,29 @@ func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListInstances handles GET /projects/{project}/instances and pins that project as current.
+func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
+	org, project, err := h.resolveProject(r)
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	h.setCurrentProjectCookie(w, project.Slug)
+	h.renderInstancesPage(w, r, org, project)
+}
+
+// ListCurrentInstances handles GET /instances.
+func (h *Handler) ListCurrentInstances(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	h.renderInstancesPage(w, r, org, nil)
+}
+
 // NewInstanceForm handles GET /web/org/{org}/projects/{project}/instances/new
 func (h *Handler) NewInstanceForm(w http.ResponseWriter, r *http.Request) {
 	org, project, err := h.resolveProject(r)
@@ -427,6 +619,7 @@ func (h *Handler) NewInstanceForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setCurrentProjectCookie(w, project.Slug)
 	w.Header().Set("Content-Type", "text/html")
 	tmpl := template.Must(template.New("new-instance").Parse(newInstanceFormTemplate))
 	tmpl.Execute(w, map[string]interface{}{
@@ -443,6 +636,8 @@ func (h *Handler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 		h.renderFormError(w, err.Error())
 		return
 	}
+
+	h.setCurrentProjectCookie(w, project.Slug)
 
 	if err := r.ParseForm(); err != nil {
 		h.renderFormError(w, "Invalid form data")
@@ -479,6 +674,8 @@ func (h *Handler) EditInstanceForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setCurrentProjectCookie(w, project.Slug)
+
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -500,11 +697,13 @@ func (h *Handler) EditInstanceForm(w http.ResponseWriter, r *http.Request) {
 
 // UpdateInstance handles PUT /web/org/{org}/projects/{project}/instances/{id}
 func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
-	_, _, err := h.resolveProject(r)
+	_, project, err := h.resolveProject(r)
 	if err != nil {
 		h.renderFormError(w, err.Error())
 		return
 	}
+
+	h.setCurrentProjectCookie(w, project.Slug)
 
 	vars := mux.Vars(r)
 	id := vars["id"]
@@ -558,7 +757,7 @@ func (h *Handler) ListMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, err := h.getPageContext(org, nil)
+	ctx, err := h.getPageContext(w, r, org, nil, "metadata")
 	if err != nil {
 		h.renderError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -571,12 +770,20 @@ func (h *Handler) ListMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	filtered := metadata[:0]
+	for _, item := range metadata {
+		if strings.HasPrefix(item.Path, ".nahcloud/") && !strings.HasPrefix(prefix, ".nahcloud/") {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+
 	w.Header().Set("Content-Type", "text/html")
 	tmpl := template.Must(template.New("metadata").Parse(baseTemplate + metadataTemplate))
 	tmpl.Execute(w, map[string]interface{}{
 		"CSS":      template.CSS(static.CSS),
 		"Context":  ctx,
-		"Metadata": metadata,
+		"Metadata": filtered,
 		"Prefix":   prefix,
 	})
 }
@@ -692,24 +899,20 @@ func (h *Handler) DeleteMetadata(w http.ResponseWriter, r *http.Request) {
 
 // Storage Handlers
 
-// ListStorage handles GET /web/org/{org}/projects/{project}/storage
-func (h *Handler) ListStorage(w http.ResponseWriter, r *http.Request) {
-	org, project, err := h.resolveProject(r)
-	if err != nil {
-		h.renderError(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	ctx, err := h.getPageContext(org, project)
+func (h *Handler) renderStoragePage(w http.ResponseWriter, r *http.Request, org *domain.Organization, project *domain.Project) {
+	ctx, err := h.getPageContext(w, r, org, project, "storage")
 	if err != nil {
 		h.renderError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	buckets, err := h.service.ListBuckets(domain.BucketListOptions{ProjectID: project.ID})
-	if err != nil {
-		h.renderError(w, err.Error(), http.StatusInternalServerError)
-		return
+	var buckets []*domain.Bucket
+	if ctx.Project != nil {
+		buckets, err = h.service.ListBuckets(domain.BucketListOptions{ProjectID: ctx.Project.ID})
+		if err != nil {
+			h.renderError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/html")
@@ -721,6 +924,29 @@ func (h *Handler) ListStorage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListStorage handles GET /projects/{project}/storage and pins that project as current.
+func (h *Handler) ListStorage(w http.ResponseWriter, r *http.Request) {
+	org, project, err := h.resolveProject(r)
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	h.setCurrentProjectCookie(w, project.Slug)
+	h.renderStoragePage(w, r, org, project)
+}
+
+// ListCurrentStorage handles GET /storage.
+func (h *Handler) ListCurrentStorage(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	h.renderStoragePage(w, r, org, nil)
+}
+
 // NewBucketForm handles GET /web/org/{org}/projects/{project}/storage/buckets/new
 func (h *Handler) NewBucketForm(w http.ResponseWriter, r *http.Request) {
 	org, project, err := h.resolveProject(r)
@@ -729,6 +955,7 @@ func (h *Handler) NewBucketForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setCurrentProjectCookie(w, project.Slug)
 	w.Header().Set("Content-Type", "text/html")
 	tmpl := template.Must(template.New("new-bucket").Parse(newBucketFormTemplate))
 	tmpl.Execute(w, map[string]interface{}{"Org": org, "Project": project})
@@ -741,6 +968,8 @@ func (h *Handler) CreateBucket(w http.ResponseWriter, r *http.Request) {
 		h.renderFormError(w, err.Error())
 		return
 	}
+
+	h.setCurrentProjectCookie(w, project.Slug)
 
 	if err := r.ParseForm(); err != nil {
 		h.renderFormError(w, "Invalid form data")
@@ -768,6 +997,8 @@ func (h *Handler) ListBucketObjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setCurrentProjectCookie(w, project.Slug)
+
 	vars := mux.Vars(r)
 	bucketName := vars["bucket"]
 
@@ -777,7 +1008,7 @@ func (h *Handler) ListBucketObjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, err := h.getPageContext(org, project)
+	ctx, err := h.getPageContext(w, r, org, project, "storage")
 	if err != nil {
 		h.renderError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -809,6 +1040,8 @@ func (h *Handler) NewObjectForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setCurrentProjectCookie(w, project.Slug)
+
 	vars := mux.Vars(r)
 	bucketName := vars["bucket"]
 
@@ -834,6 +1067,8 @@ func (h *Handler) CreateObject(w http.ResponseWriter, r *http.Request) {
 		h.renderFormError(w, err.Error())
 		return
 	}
+
+	h.setCurrentProjectCookie(w, project.Slug)
 
 	vars := mux.Vars(r)
 	bucketName := vars["bucket"]
@@ -874,6 +1109,8 @@ func (h *Handler) ViewObject(w http.ResponseWriter, r *http.Request) {
 		h.renderFormError(w, err.Error())
 		return
 	}
+
+	h.setCurrentProjectCookie(w, project.Slug)
 
 	vars := mux.Vars(r)
 	bucketName := vars["bucket"]
