@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"regexp"
+	"time"
 
 	"github.com/hypertf/nahcloud/domain"
 	"github.com/hypertf/nahcloud/pkg/endec"
@@ -14,6 +15,7 @@ import (
 type Service struct {
 	orgRepo      OrganizationRepository
 	apiKeyRepo   APIKeyRepository
+	sessionRepo  SessionRepository
 	projectRepo  ProjectRepository
 	instanceRepo InstanceRepository
 	metadataRepo MetadataRepository
@@ -28,6 +30,7 @@ type OrganizationRepository interface {
 	GetBySlug(slug string) (*domain.Organization, error)
 	List(opts domain.OrganizationListOptions) ([]*domain.Organization, error)
 	Update(id string, req domain.UpdateOrganizationRequest) (*domain.Organization, error)
+	Reset(id string) error
 	Delete(id string) error
 }
 
@@ -39,6 +42,14 @@ type APIKeyRepository interface {
 	ListByOrgID(orgID string) ([]*domain.APIKey, error)
 	UpdateLastUsed(id string) error
 	Delete(id string) error
+}
+
+// SessionRepository defines the interface for session data operations
+type SessionRepository interface {
+	Create(session *domain.Session) error
+	GetByTokenHash(tokenHash string) (*domain.Session, error)
+	Delete(id string) error
+	DeleteExpired() error
 }
 
 // ProjectRepository defines the interface for project data operations
@@ -91,10 +102,11 @@ type ObjectRepository interface {
 }
 
 // NewService creates a new service instance
-func NewService(orgRepo OrganizationRepository, apiKeyRepo APIKeyRepository, projectRepo ProjectRepository, instanceRepo InstanceRepository, metadataRepo MetadataRepository, bucketRepo BucketRepository, objectRepo ObjectRepository) *Service {
+func NewService(orgRepo OrganizationRepository, apiKeyRepo APIKeyRepository, sessionRepo SessionRepository, projectRepo ProjectRepository, instanceRepo InstanceRepository, metadataRepo MetadataRepository, bucketRepo BucketRepository, objectRepo ObjectRepository) *Service {
 	return &Service{
 		orgRepo:      orgRepo,
 		apiKeyRepo:   apiKeyRepo,
+		sessionRepo:  sessionRepo,
 		projectRepo:  projectRepo,
 		instanceRepo: instanceRepo,
 		metadataRepo: metadataRepo,
@@ -278,6 +290,26 @@ func hashToken(token string) string {
 
 // CreateOrganization creates a new organization with an initial API key
 func (s *Service) CreateOrganization(req domain.CreateOrganizationRequest) (*domain.OrganizationWithAPIKey, error) {
+	org, err := s.createOrganization(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create initial API key for the org
+	apiKeyWithToken, err := s.createAPIKey(org.ID, "default")
+	if err != nil {
+		// Rollback org creation on API key failure
+		s.orgRepo.Delete(org.ID)
+		return nil, err
+	}
+
+	return &domain.OrganizationWithAPIKey{
+		Organization: *org,
+		APIKey:       *apiKeyWithToken,
+	}, nil
+}
+
+func (s *Service) createOrganization(req domain.CreateOrganizationRequest) (*domain.Organization, error) {
 	if err := validateSlug(req.Slug); err != nil {
 		return nil, err
 	}
@@ -300,18 +332,7 @@ func (s *Service) CreateOrganization(req domain.CreateOrganizationRequest) (*dom
 		return nil, err
 	}
 
-	// Create initial API key for the org
-	apiKeyWithToken, err := s.createAPIKey(orgID, "default")
-	if err != nil {
-		// Rollback org creation on API key failure
-		s.orgRepo.Delete(orgID)
-		return nil, err
-	}
-
-	return &domain.OrganizationWithAPIKey{
-		Organization: *org,
-		APIKey:       *apiKeyWithToken,
-	}, nil
+	return org, nil
 }
 
 // GetOrganization retrieves an organization by ID
@@ -359,6 +380,11 @@ func (s *Service) UpdateOrganization(id string, req domain.UpdateOrganizationReq
 	}
 
 	return s.orgRepo.Update(id, req)
+}
+
+// ResetOrganization clears all org-scoped resources while preserving the org identity.
+func (s *Service) ResetOrganization(id string) error {
+	return s.orgRepo.Reset(id)
 }
 
 // DeleteOrganization deletes an organization
@@ -430,6 +456,125 @@ func (s *Service) DeleteAPIKey(orgID, keyID string) error {
 	}
 
 	return s.apiKeyRepo.Delete(keyID)
+}
+
+// Session operations
+
+// CreateSession creates a new session for an organization
+func (s *Service) CreateSession(orgID string) (*domain.SessionWithToken, error) {
+	// Verify organization exists
+	if _, err := s.orgRepo.GetByID(orgID); err != nil {
+		return nil, err
+	}
+
+	sessionID, err := generateID()
+	if err != nil {
+		return nil, domain.InternalError("failed to generate session ID")
+	}
+
+	// Generate session token (24 bytes = 192 bits of entropy)
+	token, err := endec.CreateToken(endec.PrefixSession, 24)
+	if err != nil {
+		return nil, domain.InternalError("failed to generate session token")
+	}
+
+	now := time.Now()
+	session := &domain.Session{
+		ID:        sessionID,
+		OrgID:     orgID,
+		TokenHash: hashToken(token),
+		CreatedAt: now,
+		ExpiresAt: now.Add(30 * 24 * time.Hour), // 30 days
+	}
+
+	if err := s.sessionRepo.Create(session); err != nil {
+		return nil, err
+	}
+
+	return &domain.SessionWithToken{
+		Session: *session,
+		Token:   token,
+	}, nil
+}
+
+// GetOrganizationBySessionToken retrieves an organization by validating the session token
+func (s *Service) GetOrganizationBySessionToken(token string) (*domain.Organization, error) {
+	// Validate token format (must be a session token)
+	if _, err := endec.ValidateToken(token, endec.PrefixSession); err != nil {
+		return nil, domain.UnauthorizedError("invalid session token format")
+	}
+
+	session, err := s.sessionRepo.GetByTokenHash(hashToken(token))
+	if err != nil {
+		if domain.IsNotFound(err) {
+			return nil, domain.UnauthorizedError("invalid session token")
+		}
+		return nil, err
+	}
+
+	// Check if session is expired
+	if time.Now().After(session.ExpiresAt) {
+		// Clean up expired session
+		s.sessionRepo.Delete(session.ID)
+		return nil, domain.UnauthorizedError("session expired")
+	}
+
+	return s.orgRepo.GetByID(session.OrgID)
+}
+
+// DeleteSession deletes a session
+func (s *Service) DeleteSession(id string) error {
+	return s.sessionRepo.Delete(id)
+}
+
+// CreateOrganizationWithSession creates a new org with a session (for web auto-creation)
+func (s *Service) CreateOrganizationWithSession() (*domain.OrganizationWithSession, error) {
+	// Generate a unique slug
+	slugBytes := make([]byte, 8)
+	if _, err := rand.Read(slugBytes); err != nil {
+		return nil, domain.InternalError("failed to generate org slug")
+	}
+	slug := "org-" + hex.EncodeToString(slugBytes)
+
+	req := domain.CreateOrganizationRequest{
+		Slug: slug,
+		Name: "My Organization",
+	}
+
+	org, err := s.createOrganization(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create session for the org
+	sessionWithToken, err := s.CreateSession(org.ID)
+	if err != nil {
+		// Rollback org creation on session failure.
+		s.orgRepo.Delete(org.ID)
+		return nil, err
+	}
+
+	return &domain.OrganizationWithSession{
+		Organization: *org,
+		Session:      *sessionWithToken,
+	}, nil
+}
+
+// CreateOrganizationWithAPIKey creates a new org for API auto-creation (returns API key)
+func (s *Service) CreateOrganizationWithAPIKey() (*domain.OrganizationWithAPIKey, error) {
+	// Generate a unique slug
+	slugBytes := make([]byte, 8)
+	if _, err := rand.Read(slugBytes); err != nil {
+		return nil, domain.InternalError("failed to generate org slug")
+	}
+	slug := "org-" + hex.EncodeToString(slugBytes)
+
+	req := domain.CreateOrganizationRequest{
+		Slug: slug,
+		Name: "My Organization",
+	}
+
+	return s.CreateOrganization(req)
 }
 
 // Project operations

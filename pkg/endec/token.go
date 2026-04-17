@@ -8,7 +8,8 @@ import (
 
 // Token prefixes (3 chars)
 const (
-	PrefixAPI = "api" // api key
+	PrefixAPI     = "api" // api key
+	PrefixSession = "ses" // session token
 )
 
 // CreateToken generates a nah token with the given prefix and random payload

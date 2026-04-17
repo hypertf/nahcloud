@@ -34,15 +34,15 @@ server: ## Build the NahCloud server
 
 
 
-## Development
-dev: ## Run with hot-reload (requires air: go install github.com/air-verse/air@latest)
+## Internal targets
+dev:
 	@which air > /dev/null || (echo "Installing air..." && go install github.com/air-verse/air@latest)
 	air
 
-dev-css: ## Watch and rebuild Tailwind CSS only
+dev-css:
 	cd web && npm run watch
 
-run-server: ## Run the server locally
+run-server:
 	go run ./cmd/server
 
 ## Testing
@@ -89,9 +89,10 @@ docker-run: ## Run Docker container
 benchmark: ## Run benchmark tests
 	go test -bench=. -benchmem ./...
 
-load-test: ## Run basic load test (requires hey)
+load-test: ## Run basic load test (requires hey and LOAD_TEST_URL)
 	@which hey > /dev/null || (echo "Please install hey: go install github.com/rakyll/hey@latest" && exit 1)
-	hey -n 1000 -c 10 http://localhost:8080/v1/projects
+	@test -n "$(LOAD_TEST_URL)" || (echo "Set LOAD_TEST_URL to the endpoint you want to hit" && exit 1)
+	hey -n 1000 -c 10 $(LOAD_TEST_URL)
 
 ## Documentation
 docs: ## Generate documentation (placeholder)
@@ -107,12 +108,9 @@ clean: ## Clean build artifacts and temporary files
 ## Release preparation
 release-prep: clean test-all lint docs ## Prepare for release (run all checks)
 
-## Development workflow shortcuts
-dev-setup: install-deps ## Set up development environment
+## Internal shortcuts
+dev-setup: install-deps
 	cd web && npm install
 	cd web && npm run build
-	@echo "Development environment ready!"
-	@echo "Run 'make dev' to start with hot-reload"
-	@echo "Run 'make run-server' to start without hot-reload"
 
-quick-test: fmt vet test ## Quick development test cycle
+quick-test: fmt vet test

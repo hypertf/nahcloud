@@ -130,6 +130,14 @@ func (db *DB) initSchema() error {
 			FOREIGN KEY (bucket_id) REFERENCES buckets(id) ON DELETE CASCADE,
 			UNIQUE(bucket_id, path)
 		)`,
+		`CREATE TABLE IF NOT EXISTS sessions (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			token_hash TEXT UNIQUE NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			expires_at DATETIME NOT NULL,
+			FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+		)`,
 	}
 
 	for _, schema := range schemas {
@@ -206,8 +214,8 @@ func (db *DB) migrateToOrganizations() error {
 	hasOldProjects = !hasOrgID && projectCount > 0
 
 	if !hasOldProjects {
-		// No migration needed, but ensure default org exists
-		return db.ensureDefaultOrg()
+		// No migration needed - orgs will be auto-created when users visit
+		return nil
 	}
 
 	log.Println("Migrating to organization-based schema...")

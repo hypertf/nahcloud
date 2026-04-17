@@ -30,6 +30,27 @@ type APIKeyWithToken struct {
 	Token string `json:"token"` // Plaintext token, shown only once
 }
 
+// Session represents a browser session for web console authentication
+type Session struct {
+	ID        string    `json:"id" db:"id"`
+	OrgID     string    `json:"org_id" db:"org_id"`
+	TokenHash string    `json:"-" db:"token_hash"` // SHA-256 hash, never exposed
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	ExpiresAt time.Time `json:"expires_at" db:"expires_at"`
+}
+
+// SessionWithToken is returned only on session creation (contains plaintext token)
+type SessionWithToken struct {
+	Session
+	Token string `json:"token"` // Plaintext token, shown only once
+}
+
+// OrganizationWithSession is returned when auto-creating an org for web session
+type OrganizationWithSession struct {
+	Organization
+	Session SessionWithToken `json:"session"`
+}
+
 // OrganizationWithAPIKey is returned on org creation (includes the initial API key)
 type OrganizationWithAPIKey struct {
 	Organization

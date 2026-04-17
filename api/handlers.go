@@ -55,33 +55,18 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
-// Helper functions to resolve org and project from URL path
+// Helper functions to resolve org and project from context/URL
 
-// resolveOrg gets org from URL and verifies the authenticated org matches
+// resolveOrg gets org from context (set by middleware)
 func (h *Handler) resolveOrg(r *http.Request) (*domain.Organization, error) {
-	vars := mux.Vars(r)
-	orgSlug := vars["org"]
-
-	if orgSlug == "" {
-		return nil, domain.InvalidInputError("organization slug is required", nil)
+	org := OrgFromContext(r.Context())
+	if org == nil {
+		return nil, domain.UnauthorizedError("no organization in context")
 	}
-
-	// Get the org from the URL
-	org, err := h.service.GetOrganizationBySlug(orgSlug)
-	if err != nil {
-		return nil, err
-	}
-
-	// Verify the authenticated org (from token) matches the requested org
-	authOrg := OrgFromContext(r.Context())
-	if authOrg != nil && authOrg.ID != org.ID {
-		return nil, domain.UnauthorizedError("token does not have access to this organization")
-	}
-
 	return org, nil
 }
 
-// resolveProject gets org and project from URL and returns the project
+// resolveProject gets org from context and project from URL
 func (h *Handler) resolveProject(r *http.Request) (*domain.Project, error) {
 	org, err := h.resolveOrg(r)
 	if err != nil {

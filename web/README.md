@@ -1,61 +1,46 @@
 # NahCloud Web Console
 
-A simple web-based interface for managing NahCloud resources using HTMX for dynamic interactions.
+The NahCloud web console is served from the same production Go binary as the API. It is not a separately deployed frontend.
+
+## Production Routing
+
+- Dashboard: `https://nahcloud.com/`
+- Org permalink: `https://nahcloud.com/o/{org-slug}`
+- Projects: `https://nahcloud.com/projects`
+- Instances: `https://nahcloud.com/projects/{project}/instances`
+- Storage: `https://nahcloud.com/projects/{project}/storage`
+- Metadata: `https://nahcloud.com/metadata`
+- Settings: `https://nahcloud.com/settings`
+
+Despite older handler comments, the console is mounted at the site root, not under `/web`.
+
+## Authentication
+
+- Browser access uses session-based auth middleware.
+- API access lives under `/v1/` and uses bearer API keys.
+
+## Deployment
+
+- Deployed directly to production on the Forge-managed DigitalOcean host.
+- Served by `nginx`, which proxies to the NahCloud Go process.
+- Static assets, templates, and handlers ship inside the same deployed binary.
+- Changes flow through `main`, the GitHub Actions `latest` release, and the Forge quick-deploy script.
 
 ## Features
 
-The web console provides BREAD (Browse, Read, Edit, Add, Delete) operations for all NahCloud resources:
+The console provides BREAD operations for NahCloud resources:
 
-### Projects
-- **Browse**: View all projects in a table format
-- **Read**: View project details 
-- **Edit**: Update project name
-- **Add**: Create new projects
-- **Delete**: Remove projects (with validation - cannot delete projects with existing instances)
+- **Projects**: browse, create, edit, and delete
+- **Instances**: browse, create, edit, and delete within a project
+- **Metadata**: browse, create, edit, and delete with prefix filtering
+- **Storage**: manage buckets and inspect project-scoped objects
 
-### Instances
-- **Browse**: View all instances with their specifications
-- **Read**: View instance details including CPU, memory, image, and status
-- **Edit**: Update instance configuration
-- **Add**: Create new instances (requires selecting a project)
-- **Delete**: Remove instances
+Other behavior:
 
-### Metadata
-- **Browse**: View all metadata key-value pairs with optional prefix filtering
-- **Read**: View metadata values
-- **Edit**: Update metadata values (path is read-only)
-- **Add**: Create new metadata entries
-- **Delete**: Remove metadata entries
-
-## Access
-
-The web console is available at:
-- **Dashboard**: `http://localhost:8080/web/`
-- **Projects**: `http://localhost:8080/web/projects`
-- **Instances**: `http://localhost:8080/web/instances` 
-- **Metadata**: `http://localhost:8080/web/metadata`
-
-## Technology
-
-- **Backend**: Go with Gorilla Mux router
-- **Frontend**: HTML with HTMX for dynamic interactions
-- **Styling**: Embedded CSS with Bootstrap-inspired classes
-- **Modals**: JavaScript-based modal dialogs for forms
-
-## Features
-
-- **Real-time updates**: HTMX provides seamless updates without page refreshes
-- **Form validation**: Client-side and server-side validation
-- **Confirmation dialogs**: Prevents accidental deletions
-- **Business logic enforcement**: Respects API constraints (e.g., cannot delete projects with instances)
-- **Responsive design**: Works on desktop and mobile devices
-
-## Usage
-
-1. Navigate to `http://localhost:8080/web/` in your browser
-2. Use the navigation links to switch between resource types
-3. Click "New [Resource]" to create resources
-4. Click "Edit" to modify existing resources
-5. Click "Delete" to remove resources (with confirmation)
-
-The interface updates dynamically using HTMX, providing a smooth single-page application experience.
+- First browser visit auto-creates a blank organization and session, without creating any projects or other resources.
+- HTMX-driven partial updates
+- Confirmation flows for destructive actions
+- Stable org permalinks that create a session for the shared org
+- Settings page for permalink sharing and org reset
+- Validation that respects API constraints
+- Responsive layout for routine browser-based operations

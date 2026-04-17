@@ -155,6 +155,39 @@ func (r *OrganizationRepository) Update(id string, req domain.UpdateOrganization
 	return existing, nil
 }
 
+// Reset removes all org-scoped resources while preserving the organization itself.
+func (r *OrganizationRepository) Reset(id string) error {
+	// First check if organization exists
+	if _, err := r.GetByID(id); err != nil {
+		return err
+	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start reset transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM metadata WHERE org_id = ?`, id); err != nil {
+		return fmt.Errorf("failed to delete organization metadata: %w", err)
+	}
+
+	// Projects cascade to instances, buckets, and objects.
+	if _, err := tx.Exec(`DELETE FROM projects WHERE org_id = ?`, id); err != nil {
+		return fmt.Errorf("failed to delete organization projects: %w", err)
+	}
+
+	if _, err := tx.Exec(`UPDATE organizations SET updated_at = ? WHERE id = ?`, time.Now(), id); err != nil {
+		return fmt.Errorf("failed to update organization timestamp: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit organization reset: %w", err)
+	}
+
+	return nil
+}
+
 // Delete deletes an organization by ID
 func (r *OrganizationRepository) Delete(id string) error {
 	// First check if organization exists

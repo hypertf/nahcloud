@@ -2,15 +2,20 @@ package web
 
 import (
 	"encoding/base64"
-	"fmt"
 	"html/template"
 	"net/http"
 	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/hypertf/nahcloud/domain"
+	"github.com/hypertf/nahcloud/pkg/auth"
 	"github.com/hypertf/nahcloud/service"
 	"github.com/hypertf/nahcloud/web/static"
+)
+
+const (
+	sessionCookieName   = "nah_session"
+	sessionCookieMaxAge = 30 * 24 * 60 * 60
 )
 
 // Handler handles web console requests
@@ -27,21 +32,19 @@ func NewHandler(svc *service.Service) *Handler {
 type PageContext struct {
 	Org      *domain.Organization
 	Project  *domain.Project
-	Orgs     []*domain.Organization
 	Projects []*domain.Project
 }
 
-// resolveOrg gets the organization from the URL
+// resolveOrg gets the organization from context (set by middleware)
 func (h *Handler) resolveOrg(r *http.Request) (*domain.Organization, error) {
-	vars := mux.Vars(r)
-	orgSlug := vars["org"]
-	if orgSlug == "" {
-		return nil, domain.InvalidInputError("organization slug is required", nil)
+	org := auth.OrgFromContext(r.Context())
+	if org == nil {
+		return nil, domain.UnauthorizedError("no organization in context")
 	}
-	return h.service.GetOrganizationBySlug(orgSlug)
+	return org, nil
 }
 
-// resolveProject gets the project from the URL
+// resolveProject gets the project from the URL (project slug still comes from URL)
 func (h *Handler) resolveProject(r *http.Request) (*domain.Organization, *domain.Project, error) {
 	org, err := h.resolveOrg(r)
 	if err != nil {
@@ -64,12 +67,8 @@ func (h *Handler) resolveProject(r *http.Request) (*domain.Organization, *domain
 
 // getPageContext builds the common page context
 func (h *Handler) getPageContext(org *domain.Organization, project *domain.Project) (*PageContext, error) {
-	orgs, err := h.service.ListOrganizations(domain.OrganizationListOptions{})
-	if err != nil {
-		return nil, err
-	}
-
 	var projects []*domain.Project
+	var err error
 	if org != nil {
 		projects, err = h.service.ListProjects(domain.ProjectListOptions{OrgID: org.ID})
 		if err != nil {
@@ -80,9 +79,30 @@ func (h *Handler) getPageContext(org *domain.Organization, project *domain.Proje
 	return &PageContext{
 		Org:      org,
 		Project:  project,
-		Orgs:     orgs,
 		Projects: projects,
 	}, nil
+}
+
+func (h *Handler) organizationPermalink(r *http.Request, slug string) string {
+	scheme := "http"
+	if forwardedProto := r.Header.Get("X-Forwarded-Proto"); forwardedProto != "" {
+		scheme = forwardedProto
+	} else if r.TLS != nil {
+		scheme = "https"
+	}
+
+	return scheme + "://" + r.Host + "/o/" + slug
+}
+
+func (h *Handler) setSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   sessionCookieMaxAge,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 // ServeLogo serves the static logo
@@ -91,23 +111,125 @@ func (h *Handler) ServeLogo(w http.ResponseWriter, r *http.Request) {
 	w.Write(static.Logo)
 }
 
-// Dashboard shows the main dashboard (redirects to default org/project)
+// Dashboard shows the org home page.
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
-	orgs, err := h.service.ListOrganizations(domain.OrganizationListOptions{})
-	if err != nil || len(orgs) == 0 {
-		h.renderError(w, "No organizations found", http.StatusInternalServerError)
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.renderError(w, "No organization found", http.StatusInternalServerError)
 		return
 	}
 
-	org := orgs[0]
-
-	projects, err := h.service.ListProjects(domain.ProjectListOptions{OrgID: org.ID})
-	if err != nil || len(projects) == 0 {
-		http.Redirect(w, r, fmt.Sprintf("/org/%s/projects", org.Slug), http.StatusFound)
+	ctx, err := h.getPageContext(org, nil)
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/org/%s/projects/%s/instances", org.Slug, projects[0].Slug), http.StatusFound)
+	metadata, err := h.service.ListMetadata(domain.MetadataListOptions{OrgID: org.ID})
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	instanceCount := 0
+	bucketCount := 0
+	for _, project := range ctx.Projects {
+		instances, err := h.service.ListInstances(domain.InstanceListOptions{ProjectID: project.ID})
+		if err != nil {
+			h.renderError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		instanceCount += len(instances)
+
+		buckets, err := h.service.ListBuckets(domain.BucketListOptions{ProjectID: project.ID})
+		if err != nil {
+			h.renderError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		bucketCount += len(buckets)
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	tmpl := template.Must(template.New("home").Parse(baseTemplate + homeTemplate))
+	tmpl.Execute(w, map[string]interface{}{
+		"CSS":           template.CSS(static.CSS),
+		"Context":       ctx,
+		"Permalink":     h.organizationPermalink(r, org.Slug),
+		"HasResources":  len(ctx.Projects) > 0 || len(metadata) > 0,
+		"ProjectCount":  len(ctx.Projects),
+		"InstanceCount": instanceCount,
+		"BucketCount":   bucketCount,
+		"MetadataCount": len(metadata),
+	})
+}
+
+// OpenPermalink switches the browser into the requested organization and creates a session.
+func (h *Handler) OpenPermalink(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	orgSlug := vars["org"]
+	if orgSlug == "" {
+		h.renderError(w, "Organization link is invalid", http.StatusBadRequest)
+		return
+	}
+
+	org, err := h.service.GetOrganizationBySlug(orgSlug)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if domain.IsNotFound(err) {
+			status = http.StatusNotFound
+		}
+		h.renderError(w, err.Error(), status)
+		return
+	}
+
+	session, err := h.service.CreateSession(org.ID)
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.setSessionCookie(w, session.Token)
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// Settings shows share and reset controls for the current organization.
+func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	ctx, err := h.getPageContext(org, nil)
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	tmpl := template.Must(template.New("settings").Parse(baseTemplate + settingsTemplate))
+	tmpl.Execute(w, map[string]interface{}{
+		"CSS":       template.CSS(static.CSS),
+		"Context":   ctx,
+		"Permalink": h.organizationPermalink(r, org.Slug),
+		"ResetDone": r.URL.Query().Get("reset") == "1",
+	})
+}
+
+// ResetOrganization clears the current organization back to its initial blank state.
+func (h *Handler) ResetOrganization(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	if err := h.service.ResetOrganization(org.ID); err != nil {
+		h.renderError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/settings?reset=1", http.StatusSeeOther)
 }
 
 // renderError renders a full page error
@@ -782,4 +904,3 @@ func (h *Handler) ViewObject(w http.ResponseWriter, r *http.Request) {
 		"Size":           len(decoded),
 	})
 }
-
