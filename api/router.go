@@ -50,9 +50,11 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	webRouter := router.PathPrefix("").Subrouter()
 	webRouter.Use(WebSessionMiddleware(svc))
 
-	// Dashboard
-	webRouter.HandleFunc("", webHandler.Dashboard).Methods("GET")
-	webRouter.HandleFunc("/", webHandler.Dashboard).Methods("GET")
+	// Default landing page and current project routes
+	webRouter.HandleFunc("", webHandler.ListCurrentInstances).Methods("GET")
+	webRouter.HandleFunc("/", webHandler.ListCurrentInstances).Methods("GET")
+	webRouter.HandleFunc("/instances", webHandler.ListCurrentInstances).Methods("GET")
+	webRouter.HandleFunc("/storage", webHandler.ListCurrentStorage).Methods("GET")
 
 	// Settings
 	webRouter.HandleFunc("/settings", webHandler.Settings).Methods("GET")
@@ -66,10 +68,6 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	webRouter.HandleFunc("/projects/{project}/edit", webHandler.EditProjectForm).Methods("GET")
 	webRouter.HandleFunc("/projects/{project}", webHandler.UpdateProject).Methods("PUT")
 	webRouter.HandleFunc("/projects/{project}", webHandler.DeleteProject).Methods("DELETE")
-
-	// Current project routes
-	webRouter.HandleFunc("/instances", webHandler.ListCurrentInstances).Methods("GET")
-	webRouter.HandleFunc("/storage", webHandler.ListCurrentStorage).Methods("GET")
 
 	// Instances (scoped to project)
 	webRouter.HandleFunc("/projects/{project}/instances", webHandler.ListInstances).Methods("GET")

@@ -199,7 +199,7 @@ func (h *Handler) clearCurrentProjectCookie(w http.ResponseWriter) {
 func (h *Handler) currentSectionRedirect(section string) string {
 	switch section {
 	case "overview":
-		return "/"
+		return "/instances"
 	case "instances":
 		return "/instances"
 	case "storage":
@@ -211,7 +211,7 @@ func (h *Handler) currentSectionRedirect(section string) string {
 	case "settings":
 		return "/settings"
 	default:
-		return "/"
+		return "/instances"
 	}
 }
 
@@ -226,81 +226,10 @@ func visibleMetadata(metadata []*domain.Metadata) []*domain.Metadata {
 	return filtered
 }
 
-func limitMetadata(items []*domain.Metadata, limit int) []*domain.Metadata {
-	if len(items) <= limit {
-		return items
-	}
-	return items[:limit]
-}
-
-func limitInstances(items []*domain.Instance, limit int) []*domain.Instance {
-	if len(items) <= limit {
-		return items
-	}
-	return items[:limit]
-}
-
-func limitBuckets(items []*domain.Bucket, limit int) []*domain.Bucket {
-	if len(items) <= limit {
-		return items
-	}
-	return items[:limit]
-}
-
 // ServeLogo serves the static logo
 func (h *Handler) ServeLogo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Write(static.Logo)
-}
-
-// Dashboard shows the current-project console surface.
-func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
-	org, err := h.resolveOrg(r)
-	if err != nil {
-		h.renderError(w, "No organization found", http.StatusInternalServerError)
-		return
-	}
-
-	ctx, err := h.getPageContext(w, r, org, nil, "overview")
-	if err != nil {
-		h.renderError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	var instances []*domain.Instance
-	var buckets []*domain.Bucket
-	if ctx.Project != nil {
-		instances, err = h.service.ListInstances(domain.InstanceListOptions{ProjectID: ctx.Project.ID})
-		if err != nil {
-			h.renderError(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		buckets, err = h.service.ListBuckets(domain.BucketListOptions{ProjectID: ctx.Project.ID})
-		if err != nil {
-			h.renderError(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-
-	metadata, err := h.service.ListMetadata(domain.MetadataListOptions{OrgID: org.ID})
-	if err != nil {
-		h.renderError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	metadata = visibleMetadata(metadata)
-
-	w.Header().Set("Content-Type", "text/html")
-	tmpl := template.Must(template.New("home").Parse(baseTemplate + homeTemplate))
-	tmpl.Execute(w, map[string]interface{}{
-		"CSS":       template.CSS(static.CSS),
-		"Context":   ctx,
-		"Permalink": h.organizationPermalink(r, org.Slug),
-		"Instances": limitInstances(instances, 8),
-		"Buckets":   limitBuckets(buckets, 8),
-		"Metadata":  limitMetadata(metadata, 8),
-	})
 }
 
 // OpenPermalink switches the browser into the requested organization and creates a session.
@@ -493,7 +422,7 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	if isHTMXRequest(r) {
 		redirectTo := r.FormValue("redirect_to")
 		if redirectTo == "" {
-			redirectTo = "/"
+			redirectTo = "/instances"
 		}
 		w.Header().Set("HX-Redirect", redirectTo)
 		w.WriteHeader(http.StatusOK)
