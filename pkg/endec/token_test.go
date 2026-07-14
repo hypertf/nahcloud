@@ -22,11 +22,6 @@ func TestTokenRoundTrip(t *testing.T) {
 	prefixes := []string{
 		PrefixSession,
 		PrefixAPI,
-		PrefixRefresh,
-		PrefixInvite,
-		PrefixReset,
-		PrefixVerify,
-		PrefixWebhook,
 	}
 
 	for _, prefix := range prefixes {

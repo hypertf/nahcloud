@@ -8,11 +8,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMetadataRepository_Create(t *testing.T) {
-	db := setupTestDB(t)
-	defer db.Close()
+func setupMetadataTestRepository(t *testing.T) (*DB, *MetadataRepository, string) {
+	t.Helper()
 
-	repo := NewMetadataRepository(db)
+	db := setupTestDB(t)
+	orgID := "org-metadata-test"
+	err := NewOrganizationRepository(db).Create(&domain.Organization{
+		ID:   orgID,
+		Slug: "metadata-test",
+		Name: "Metadata Test",
+	})
+	require.NoError(t, err)
+
+	return db, NewMetadataRepository(db), orgID
+}
+
+func TestMetadataRepository_Create(t *testing.T) {
+	db, repo, orgID := setupMetadataTestRepository(t)
+	defer db.Close()
 
 	tests := []struct {
 		name        string
@@ -23,6 +36,7 @@ func TestMetadataRepository_Create(t *testing.T) {
 		{
 			name: "simple create",
 			req: domain.CreateMetadataRequest{
+				OrgID: orgID,
 				Path:  "/config/app.yaml",
 				Value: "database: localhost",
 			},
@@ -31,6 +45,7 @@ func TestMetadataRepository_Create(t *testing.T) {
 		{
 			name: "create with nested path",
 			req: domain.CreateMetadataRequest{
+				OrgID: orgID,
 				Path:  "/config/auth/ldap.yaml",
 				Value: "server: ldap.example.com",
 			},
@@ -39,6 +54,7 @@ func TestMetadataRepository_Create(t *testing.T) {
 		{
 			name: "create with empty value",
 			req: domain.CreateMetadataRequest{
+				OrgID: orgID,
 				Path:  "/empty",
 				Value: "",
 			},
@@ -47,6 +63,7 @@ func TestMetadataRepository_Create(t *testing.T) {
 		{
 			name: "duplicate path should fail",
 			req: domain.CreateMetadataRequest{
+				OrgID: orgID,
 				Path:  "/config/app.yaml", // Same as first test
 				Value: "different value",
 			},
@@ -81,13 +98,12 @@ func TestMetadataRepository_Create(t *testing.T) {
 }
 
 func TestMetadataRepository_GetByID(t *testing.T) {
-	db := setupTestDB(t)
+	db, repo, orgID := setupMetadataTestRepository(t)
 	defer db.Close()
-
-	repo := NewMetadataRepository(db)
 
 	// Create test metadata
 	req := domain.CreateMetadataRequest{
+		OrgID: orgID,
 		Path:  "/config/app.yaml",
 		Value: "database: localhost",
 	}
@@ -144,13 +160,12 @@ func TestMetadataRepository_GetByID(t *testing.T) {
 }
 
 func TestMetadataRepository_Update(t *testing.T) {
-	db := setupTestDB(t)
+	db, repo, orgID := setupMetadataTestRepository(t)
 	defer db.Close()
-
-	repo := NewMetadataRepository(db)
 
 	// Create test metadata
 	req1 := domain.CreateMetadataRequest{
+		OrgID: orgID,
 		Path:  "/config/app.yaml",
 		Value: "database: localhost",
 	}
@@ -158,6 +173,7 @@ func TestMetadataRepository_Update(t *testing.T) {
 	require.NoError(t, err)
 
 	req2 := domain.CreateMetadataRequest{
+		OrgID: orgID,
 		Path:  "/config/other.yaml",
 		Value: "other: value",
 	}
@@ -255,19 +271,17 @@ func TestMetadataRepository_Update(t *testing.T) {
 }
 
 func TestMetadataRepository_List(t *testing.T) {
-	db := setupTestDB(t)
+	db, repo, orgID := setupMetadataTestRepository(t)
 	defer db.Close()
-
-	repo := NewMetadataRepository(db)
 
 	// Set up test data
 	testData := []domain.CreateMetadataRequest{
-		{Path: "/config/app.yaml", Value: "app config"},
-		{Path: "/config/database.yaml", Value: "db config"},
-		{Path: "/config/auth/ldap.yaml", Value: "ldap config"},
-		{Path: "/config/auth/oauth.yaml", Value: "oauth config"},
-		{Path: "/data/users.json", Value: "users data"},
-		{Path: "/data/logs/app.log", Value: "log data"},
+		{OrgID: orgID, Path: "/config/app.yaml", Value: "app config"},
+		{OrgID: orgID, Path: "/config/database.yaml", Value: "db config"},
+		{OrgID: orgID, Path: "/config/auth/ldap.yaml", Value: "ldap config"},
+		{OrgID: orgID, Path: "/config/auth/oauth.yaml", Value: "oauth config"},
+		{OrgID: orgID, Path: "/data/users.json", Value: "users data"},
+		{OrgID: orgID, Path: "/data/logs/app.log", Value: "log data"},
 	}
 
 	var createdMetadata []*domain.Metadata
@@ -278,10 +292,10 @@ func TestMetadataRepository_List(t *testing.T) {
 	}
 
 	tests := []struct {
-		name            string
-		prefix          string
-		expectedPaths   []string
-		expectedLength  int
+		name           string
+		prefix         string
+		expectedPaths  []string
+		expectedLength int
 	}{
 		{
 			name:   "list all",
@@ -344,6 +358,7 @@ func TestMetadataRepository_List(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := domain.MetadataListOptions{
+				OrgID:  orgID,
 				Prefix: tt.prefix,
 			}
 
@@ -372,13 +387,12 @@ func TestMetadataRepository_List(t *testing.T) {
 }
 
 func TestMetadataRepository_Delete(t *testing.T) {
-	db := setupTestDB(t)
+	db, repo, orgID := setupMetadataTestRepository(t)
 	defer db.Close()
-
-	repo := NewMetadataRepository(db)
 
 	// Create test metadata
 	req := domain.CreateMetadataRequest{
+		OrgID: orgID,
 		Path:  "/config/app.yaml",
 		Value: "database: localhost",
 	}
@@ -434,15 +448,14 @@ func TestMetadataRepository_Delete(t *testing.T) {
 }
 
 func TestMetadataRepository_PathUniqueness(t *testing.T) {
-	db := setupTestDB(t)
+	db, repo, orgID := setupMetadataTestRepository(t)
 	defer db.Close()
-
-	repo := NewMetadataRepository(db)
 
 	path := "/config/app.yaml"
 
 	// Create first metadata
 	req1 := domain.CreateMetadataRequest{
+		OrgID: orgID,
 		Path:  path,
 		Value: "first value",
 	}
@@ -451,6 +464,7 @@ func TestMetadataRepository_PathUniqueness(t *testing.T) {
 
 	// Try to create another with same path
 	req2 := domain.CreateMetadataRequest{
+		OrgID: orgID,
 		Path:  path,
 		Value: "second value",
 	}
@@ -459,7 +473,7 @@ func TestMetadataRepository_PathUniqueness(t *testing.T) {
 	assert.True(t, domain.IsAlreadyExists(err))
 
 	// Verify only one exists
-	opts := domain.MetadataListOptions{}
+	opts := domain.MetadataListOptions{OrgID: orgID}
 	allMetadata, err := repo.List(opts)
 	require.NoError(t, err)
 	assert.Len(t, allMetadata, 1)
@@ -468,20 +482,19 @@ func TestMetadataRepository_PathUniqueness(t *testing.T) {
 }
 
 func TestMetadataRepository_pathExists(t *testing.T) {
-	db := setupTestDB(t)
+	db, repo, orgID := setupMetadataTestRepository(t)
 	defer db.Close()
-
-	repo := NewMetadataRepository(db)
 
 	path := "/config/app.yaml"
 
 	// Initially should not exist
-	exists, err := repo.pathExists(path)
+	exists, err := repo.pathExists(orgID, path)
 	require.NoError(t, err)
 	assert.False(t, exists)
 
 	// Create metadata
 	req := domain.CreateMetadataRequest{
+		OrgID: orgID,
 		Path:  path,
 		Value: "test value",
 	}
@@ -489,12 +502,12 @@ func TestMetadataRepository_pathExists(t *testing.T) {
 	require.NoError(t, err)
 
 	// Now should exist
-	exists, err = repo.pathExists(path)
+	exists, err = repo.pathExists(orgID, path)
 	require.NoError(t, err)
 	assert.True(t, exists)
 
 	// Different path should not exist
-	exists, err = repo.pathExists("/different/path")
+	exists, err = repo.pathExists(orgID, "/different/path")
 	require.NoError(t, err)
 	assert.False(t, exists)
 }
