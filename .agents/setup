@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+go_version="$(awk '$1 == "go" { version = $2 } $1 == "toolchain" { sub(/^go/, "", $2); print $2; found = 1; exit } END { if (!found) print version }' go.mod)"
+
+if ! command -v mise >/dev/null 2>&1; then
+  echo "Installing mise tool manager..."
+  curl -fsSL https://mise.run | sh
+fi
+
+export PATH="$HOME/.local/bin:$PATH"
+echo "Ensuring Go $go_version is available..."
+mise use --global --pin --yes "go@$go_version"
+
+go_root="$(mise where "go@$go_version")"
+ln -sfn "$go_root/bin/go" "$HOME/.local/bin/go"
+ln -sfn "$go_root/bin/gofmt" "$HOME/.local/bin/gofmt"
+
+echo "Downloading Go modules..."
+"$go_root/bin/go" mod download

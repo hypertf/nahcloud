@@ -2,10 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"os"
 	"runtime"
 	"time"
 
+	"github.com/felixge/httpsnoop"
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/hypertf/nahcloud/service"
 	"github.com/hypertf/nahcloud/web"
@@ -160,6 +164,10 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 
 	// Add logging middleware
 	router.Use(loggingMiddleware)
+	router.NotFoundHandler = loggingMiddleware(http.NotFoundHandler())
+	router.MethodNotAllowedHandler = loggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}))
 
 	return router
 }
@@ -169,7 +177,8 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token, X-Request-ID")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -180,11 +189,41 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// loggingMiddleware adds basic request logging
+var requestLogger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+// loggingMiddleware logs completed HTTP requests as structured JSON.
 func loggingMiddleware(next http.Handler) http.Handler {
+	return loggingMiddlewareWithLogger(next, requestLogger)
+}
+
+func loggingMiddlewareWithLogger(next http.Handler, logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Add proper structured logging here
-		// For now, we'll let the main server handle logging
-		next.ServeHTTP(w, r)
+		requestID := r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = uuid.NewString()
+			r.Header.Set("X-Request-ID", requestID)
+		}
+		w.Header().Set("X-Request-ID", requestID)
+
+		metrics := httpsnoop.CaptureMetrics(next, w, r)
+
+		route := r.URL.Path
+		if currentRoute := mux.CurrentRoute(r); currentRoute != nil {
+			if template, err := currentRoute.GetPathTemplate(); err == nil {
+				route = template
+			}
+		}
+
+		logger.InfoContext(r.Context(), "http_request",
+			"method", r.Method,
+			"route", route,
+			"path", r.URL.Path,
+			"status", metrics.Code,
+			"response_bytes", metrics.Written,
+			"duration", metrics.Duration,
+			"remote_addr", r.RemoteAddr,
+			"user_agent", r.UserAgent(),
+			"request_id", requestID,
+		)
 	})
 }
