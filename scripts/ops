@@ -41,8 +41,8 @@ case "${1:-}" in
     curl --fail --silent --show-error \
       --header "Authorization: Bearer $FORGE_API_TOKEN" \
       --header 'Accept: application/json' \
-      "https://forge.laravel.com/api/orgs/$forge_org/servers/$forge_server_id/sites/$forge_site_id" \
-      | jq '{site: {id: .data.id, name: .data.attributes.name, aliases: .data.attributes.aliases, status: .data.attributes.status, https: .data.attributes.https, root_directory: .data.attributes.root_directory, repository: .data.attributes.repository, quick_deploy: .data.attributes.quick_deploy}}'
+      "https://forge.laravel.com/api/orgs/$forge_org/servers/$forge_server_id/sites?filter%5Bname%5D=nahcloud.on-forge.com" \
+      | jq --arg site_id "$forge_site_id" '.data[] | select(.id == $site_id) | {site: {id, name: .attributes.name, aliases: .attributes.aliases, status: .attributes.status, https: .attributes.https, root_directory: .attributes.root_directory, repository: .attributes.repository, quick_deploy: .attributes.quick_deploy}}'
     ;;
   digitalocean-inventory)
     require_command curl
