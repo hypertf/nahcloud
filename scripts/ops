@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly forge_org="james-nicolas-qpo"
+readonly forge_server_id="955080"
+readonly forge_site_id="2999262"
+readonly digitalocean_droplet_id="516040592"
+
+usage() {
+  printf '%s\n' 'Usage: scripts/ops health|forge-inventory|digitalocean-inventory'
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || {
+    printf 'Required command is missing: %s\n' "$1" >&2
+    exit 1
+  }
+}
+
+require_secret() {
+  if [ -z "${!1:-}" ]; then
+    printf '%s is not injected. See docs/amp-orbs.md.\n' "$1" >&2
+    exit 1
+  fi
+}
+
+case "${1:-}" in
+  health)
+    require_command curl
+    require_command jq
+    printf '%s\n' 'Console:'
+    curl --fail --silent --show-error --output /dev/null \
+      --write-out 'HTTP %{http_code} %{url_effective}\n' https://nahcloud.com/
+    printf '%s\n' 'Build info:'
+    curl --fail --silent --show-error https://nahcloud.com/buildz | jq '{version, go_version, os, arch}'
+    ;;
+  forge-inventory)
+    require_command curl
+    require_command jq
+    require_secret FORGE_API_TOKEN
+    curl --fail --silent --show-error \
+      --header "Authorization: Bearer $FORGE_API_TOKEN" \
+      --header 'Accept: application/json' \
+      "https://forge.laravel.com/api/orgs/$forge_org/servers/$forge_server_id/sites/$forge_site_id" \
+      | jq '{site: {id: .data.id, name: .data.attributes.name, aliases: .data.attributes.aliases, status: .data.attributes.status, https: .data.attributes.https, root_directory: .data.attributes.root_directory, repository: .data.attributes.repository, quick_deploy: .data.attributes.quick_deploy}}'
+    ;;
+  digitalocean-inventory)
+    require_command curl
+    require_command jq
+    require_secret DIGITALOCEAN_ACCESS_TOKEN
+    curl --fail --silent --show-error \
+      --header "Authorization: Bearer $DIGITALOCEAN_ACCESS_TOKEN" \
+      --header 'Accept: application/json' \
+      "https://api.digitalocean.com/v2/droplets/$digitalocean_droplet_id" \
+      | jq '{droplet: {id: .droplet.id, name: .droplet.name, status: .droplet.status, region: .droplet.region.slug, size: .droplet.size_slug, image: .droplet.image.description, networks: .droplet.networks.v4}}'
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

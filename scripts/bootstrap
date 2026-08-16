@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly go_version="1.24.3"
+repo_root="$(git rev-parse --show-toplevel)"
+runtime_root="$repo_root/.amp"
+
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64)
+    go_platform="linux-amd64"
+    go_checksum="3333f6ea53afa971e9078895eaa4ac7204a8c6b5c68c10e6bc9a33e8e391bdd8"
+    ;;
+  Linux-aarch64|Linux-arm64)
+    go_platform="linux-arm64"
+    go_checksum="a463cb59382bd7ae7d8f4c68846e73c4d589f223c589ac76871b66811ded7836"
+    ;;
+  Darwin-x86_64)
+    go_platform="darwin-amd64"
+    go_checksum="13e6fe3fcf65689d77d40e633de1e31c6febbdbcb846eb05fc2434ed2213e92b"
+    ;;
+  Darwin-arm64)
+    go_platform="darwin-arm64"
+    go_checksum="64a3fa22142f627e78fac3018ce3d4aeace68b743eff0afda8aae0411df5e4fb"
+    ;;
+  *)
+    printf 'Unsupported bootstrap platform: %s-%s\n' "$(uname -s)" "$(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+toolchain_dir="$runtime_root/toolchains/go${go_version}-${go_platform}"
+go_bin="$toolchain_dir/bin/go"
+
+install_system_build_tools() {
+  if command -v cc >/dev/null 2>&1; then
+    return
+  fi
+  if ! command -v apt-get >/dev/null 2>&1; then
+    printf '%s\n' 'A C compiler is required for github.com/mattn/go-sqlite3.' >&2
+    exit 1
+  fi
+  if [ "$(id -u)" -eq 0 ]; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential ca-certificates curl
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo apt-get update
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential ca-certificates curl
+  else
+    printf '%s\n' 'Install build-essential, ca-certificates, and curl, then rerun bootstrap.' >&2
+    exit 1
+  fi
+}
+
+calculate_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+install_go() {
+  command -v curl >/dev/null 2>&1 || {
+    printf '%s\n' 'curl is required to install the pinned Go toolchain.' >&2
+    exit 1
+  }
+  command -v tar >/dev/null 2>&1 || {
+    printf '%s\n' 'tar is required to install the pinned Go toolchain.' >&2
+    exit 1
+  }
+
+  mkdir -p "$runtime_root/toolchains"
+  temp_dir="$(mktemp -d "$runtime_root/toolchains/.go-install.XXXXXX")"
+  trap 'rm -rf "$temp_dir"' RETURN
+  archive="$temp_dir/go${go_version}.${go_platform}.tar.gz"
+
+  curl --fail --location --retry 3 --output "$archive" \
+    "https://go.dev/dl/go${go_version}.${go_platform}.tar.gz"
+  actual_checksum="$(calculate_sha256 "$archive")"
+  if [ "$actual_checksum" != "$go_checksum" ]; then
+    printf 'Go archive checksum mismatch: expected %s, got %s\n' "$go_checksum" "$actual_checksum" >&2
+    exit 1
+  fi
+
+  tar -C "$temp_dir" -xzf "$archive"
+  mv "$temp_dir/go" "$toolchain_dir"
+  trap - RETURN
+  rm -rf "$temp_dir"
+}
+
+install_system_build_tools
+if [ ! -x "$go_bin" ]; then
+  install_go
+fi
+
+mkdir -p "$runtime_root/build" "$runtime_root/in/artifacts" "$runtime_root/runtime"
+
+cd "$repo_root"
+"$go_bin" mod download
+
+if ! command -v npm >/dev/null 2>&1; then
+  printf '%s\n' 'npm is required; Amp orbs include Node.js and npm.' >&2
+  exit 1
+fi
+npm ci --prefix web --no-audit --no-fund
+
+printf 'Go: %s\n' "$("$go_bin" version)"
+printf 'Node: %s\n' "$(node --version)"
+printf '%s\n' 'Dependencies installed from go.sum and web/package-lock.json.'

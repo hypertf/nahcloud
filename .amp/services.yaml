@@ -1,0 +1,7 @@
+services:
+  nahcloud:
+    command: ./scripts/dev-server
+    health: /buildz
+    portal:
+      title: NahCloud
+      description: Ephemeral local console backed by disposable SQLite data.

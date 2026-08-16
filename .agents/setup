@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+./scripts/bootstrap
+
+printf '%s\n' 'NahCloud orb setup complete.'
+printf '%s\n' 'Run: amp orb service ensure'

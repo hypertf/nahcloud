@@ -7,3 +7,10 @@ tmp
 
 # Web dependencies (output.css is committed for go build without npm)
 web/node_modules
+
+# Ephemeral Amp/orb state
+.amp/build/
+.amp/in/
+.amp/portals/
+.amp/runtime/
+.amp/toolchains/

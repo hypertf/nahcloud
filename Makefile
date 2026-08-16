@@ -1,10 +1,10 @@
-.PHONY: build test clean server provider install-deps fmt vet lint acceptance-test help
+.PHONY: build test clean server provider install-deps fmt vet lint acceptance-test help bootstrap check orb-service
 
 # Variables
 BINARY_NAME_SERVER=nahcloud
 
 VERSION?=dev
-LDFLAGS=-ldflags "-X main.version=$(VERSION)"
+LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
 
 # Default target
 all: build
@@ -22,9 +22,11 @@ help: ## Show this help message
 	}' $(MAKEFILE_LIST)
 
 ## Dependencies
+bootstrap: ## Install the pinned Go toolchain and locked web dependencies
+	./scripts/bootstrap
+
 install-deps: ## Install Go dependencies
 	go mod download
-	go mod tidy
 
 ## Building
 build: server ## Build server binary
@@ -44,6 +46,9 @@ dev-css:
 
 run-server:
 	go run ./cmd/server
+
+orb-service: ## Start/reconcile the Amp orb service and portal
+	amp orb service ensure
 
 ## Testing
 test: ## Run unit tests
@@ -114,3 +119,6 @@ dev-setup: install-deps
 	cd web && npm run build
 
 quick-test: fmt vet test
+
+check: ## Run the reproducible project verification
+	./scripts/check

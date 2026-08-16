@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+./scripts/go test ./...
+./scripts/go vet ./...
+./scripts/go build -ldflags "-X main.Version=$(git rev-parse --short HEAD)" \
+  -o .amp/build/nahcloud ./cmd/server
+npm run build --prefix web
+git diff --exit-code -- web/static/output.css
+
+printf '%s\n' 'NahCloud checks passed.'

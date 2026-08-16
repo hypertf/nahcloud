@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly go_version="1.24.3"
+repo_root="$(git rev-parse --show-toplevel)"
+
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64) go_platform="linux-amd64" ;;
+  Linux-aarch64|Linux-arm64) go_platform="linux-arm64" ;;
+  Darwin-x86_64) go_platform="darwin-amd64" ;;
+  Darwin-arm64) go_platform="darwin-arm64" ;;
+  *)
+    printf 'Unsupported platform: %s-%s\n' "$(uname -s)" "$(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+go_bin="$repo_root/.amp/toolchains/go${go_version}-${go_platform}/bin/go"
+if [ ! -x "$go_bin" ]; then
+  printf '%s\n' 'Pinned Go toolchain is missing. Run ./.agents/setup first.' >&2
+  exit 1
+fi
+
+exec "$go_bin" "$@"

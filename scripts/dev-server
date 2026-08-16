@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+port="${PORT:-8080}"
+case "$port" in
+  ''|*[!0-9]*)
+    printf 'PORT must be numeric, got: %s\n' "$port" >&2
+    exit 1
+    ;;
+esac
+
+mkdir -p "$repo_root/.amp/runtime"
+export NAH_ADDR="${NAH_ADDR:-0.0.0.0:$port}"
+export NAH_SQLITE_DSN="${NAH_SQLITE_DSN:-$repo_root/.amp/runtime/nahcloud.db}"
+
+version="$(git rev-parse --short HEAD 2>/dev/null || printf dev)"
+exec ./scripts/go run -ldflags "-X main.Version=$version" ./cmd/server

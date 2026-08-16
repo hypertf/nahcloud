@@ -1,0 +1,40 @@
+version: 1
+amp_project: jenicola/nahcloud
+
+environment:
+  - name: PORT
+    classification: non-secret
+    owner: amp-orb-service
+    default: "8080"
+    purpose: Local HTTP listener selected automatically by Amp in an orb.
+  - name: NAH_ADDR
+    classification: non-secret
+    owner: scripts/dev-server
+    default: "0.0.0.0:${PORT}"
+    purpose: NahCloud HTTP bind address.
+  - name: NAH_SQLITE_DSN
+    classification: non-secret
+    owner: scripts/dev-server
+    default: .amp/runtime/nahcloud.db
+    purpose: Disposable local SQLite database; never point this at production data.
+
+credentials:
+  - name: FORGE_API_TOKEN
+    classification: secret
+    required_for: Optional read-only Forge inventory.
+    recommended_scope: Organization, server, site, deployment, and background-process read access only.
+  - name: DIGITALOCEAN_ACCESS_TOKEN
+    classification: secret
+    required_for: Optional read-only DigitalOcean inventory.
+    recommended_scope: droplet:read
+
+provided_by_amp:
+  - name: AMP_ORB
+    classification: non-secret
+  - name: AMP_THREAD_ID
+    classification: non-secret
+  - name: PUBLIC_URL
+    classification: non-secret
+  - name: GITHUB_AUTHENTICATION
+    classification: managed
+    note: Amp orbs provide authenticated gh; do not add a duplicate GitHub token.

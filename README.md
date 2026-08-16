@@ -24,9 +24,9 @@ The current production path is:
 
 ## Working Model
 
-- We work directly in production.
-- This repository intentionally does not document a local-development workflow.
-- Documentation and verification should describe the live service, not an unpublished local environment.
+- Production still deploys from `main`, but changes are developed and verified on branches before any approved production push.
+- A reproducible local and Amp orb workflow is documented in [`docs/amp-orbs.md`](docs/amp-orbs.md).
+- Local/orb runs use disposable SQLite data and never require production credentials or data.
 
 ## Operational Notes
 
