@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const latestSchemaVersion = 3
+const latestSchemaVersion = 4
 
 type migration struct {
 	version int
@@ -27,7 +27,7 @@ func (db *DB) runMigrations() error {
 	if current > latestSchemaVersion {
 		return fmt.Errorf("database schema version %d is newer than supported version %d", current, latestSchemaVersion)
 	}
-	for _, item := range []migration{{2, migrateV2}, {3, migrateV3}} {
+	for _, item := range []migration{{2, migrateV2}, {3, migrateV3}, {4, migrateV4}} {
 		if current >= item.version {
 			continue
 		}
@@ -121,6 +121,15 @@ func migrateV3(tx *sql.Tx) error {
 		}
 	}
 	for _, statement := range graphSchema {
+		if _, err := tx.Exec(statement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateV4(tx *sql.Tx) error {
+	for _, statement := range faultSchemaStatements() {
 		if _, err := tx.Exec(statement); err != nil {
 			return err
 		}

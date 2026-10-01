@@ -65,12 +65,14 @@ func runServer(cmd *cobra.Command, args []string) error {
 	bucketRepo := sqlite.NewBucketRepository(db)
 	objectRepo := sqlite.NewObjectRepository(db)
 	graphRepo := sqlite.NewGraphRepository(db)
+	faultRepo := sqlite.NewFaultRepository(db)
 
 	// Initialize service layer
 	svc := service.NewService(orgRepo, apiKeyRepo, sessionRepo, projectRepo, instanceRepo, metadataRepo, bucketRepo, objectRepo, graphRepo)
+	faultSvc := service.NewFaultService(faultRepo)
 
 	// Initialize API handlers
-	handler := api.NewHandler(svc)
+	handler := api.NewHandler(svc, faultSvc)
 
 	// Setup router
 	router := api.SetupRouter(handler, svc, Version)

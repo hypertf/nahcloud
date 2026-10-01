@@ -168,6 +168,10 @@ func (r *OrganizationRepository) Reset(id string) error {
 	}
 	defer tx.Rollback()
 
+	if _, err := tx.Exec(`DELETE FROM fault_rules WHERE org_id = ?`, id); err != nil {
+		return fmt.Errorf("failed to delete organization fault rules: %w", err)
+	}
+
 	if _, err := tx.Exec(`DELETE FROM metadata WHERE org_id = ?`, id); err != nil {
 		return fmt.Errorf("failed to delete organization metadata: %w", err)
 	}
