@@ -42,6 +42,7 @@ func newWebGraphTestHandler(t *testing.T) (*Handler, *service.Service) {
 		sqlite.NewSessionRepository(db), sqlite.NewProjectRepository(db),
 		sqlite.NewInstanceRepository(db), sqlite.NewMetadataRepository(db),
 		sqlite.NewBucketRepository(db), sqlite.NewObjectRepository(db),
+		sqlite.NewGraphRepository(db),
 	)
 	return NewHandler(svc), svc
 }
@@ -135,7 +136,7 @@ func TestCloudGraphRendersSectionEmptyStates(t *testing.T) {
 	require.Contains(t, body, "Loading the latest graph")
 }
 
-func TestCloudGraphProductionAdapterShowsUnavailableWithoutFakeData(t *testing.T) {
+func TestCloudGraphProductionAdapterShowsRealEmptyState(t *testing.T) {
 	h, svc := newWebGraphTestHandler(t)
 	org, project := createGraphOrgProject(t, svc)
 
@@ -143,11 +144,36 @@ func TestCloudGraphProductionAdapterShowsUnavailableWithoutFakeData(t *testing.T
 	h.ListCloud(response, graphRequest(&org.Organization, project, false))
 	body := response.Body.String()
 	require.Equal(t, http.StatusOK, response.Code, body)
-	require.Contains(t, body, "This build cannot read the graph service yet")
-	require.Contains(t, body, ErrGraphBackendUnavailable.Error())
-	require.Contains(t, body, "No placeholder resources are shown")
-	require.NotContains(t, body, "production</h4>")
+	require.Contains(t, body, "No networks")
+	require.Contains(t, body, "No load balancers")
+	require.Contains(t, body, "No disks in this project")
+	require.Contains(t, body, "No organization policies")
 	require.Contains(t, body, "Fault Lab")
+}
+
+func TestCloudGraphProductionAdapterCreatesAndReadsRelationships(t *testing.T) {
+	h, svc := newWebGraphTestHandler(t)
+	org, project := createGraphOrgProject(t, svc)
+	adapter := h.graph
+	scope := graphScope(&org.Organization, project)
+
+	require.NoError(t, adapter.Create(scope, GraphCreateInput{Kind: "network", Name: "private", Region: domain.RegionUSEast1}))
+	networks, err := svc.ListNetworks(project.ID)
+	require.NoError(t, err)
+	require.Len(t, networks, 1)
+	require.NoError(t, adapter.Create(scope, GraphCreateInput{Kind: "subnet", ParentID: networks[0].ID, Name: "apps", CIDR: "10.42.0.0/24"}))
+	require.NoError(t, adapter.Create(scope, GraphCreateInput{Kind: "disk", Name: "data", Region: domain.RegionUSEast1, DiskType: "ssd", SizeGB: 100}))
+	require.NoError(t, adapter.Create(scope, GraphCreateInput{Kind: "policy", Name: "readers", Effect: "allow", Actions: "instances.get, disks.get"}))
+
+	snapshot, err := adapter.Snapshot(scope)
+	require.NoError(t, err)
+	require.Len(t, snapshot.Networks, 1)
+	require.Len(t, snapshot.Networks[0].Subnets, 1)
+	require.Equal(t, "10.42.0.0/24", snapshot.Networks[0].Subnets[0].CIDR)
+	require.Len(t, snapshot.Disks, 1)
+	require.Equal(t, 100, snapshot.Disks[0].SizeGB)
+	require.Len(t, snapshot.Policies, 1)
+	require.Equal(t, []string{"instances.get", "disks.get"}, snapshot.Policies[0].Actions)
 }
 
 func TestCloudGraphHandlerRejectsAnotherOrganizationsProjectBeforeAdapter(t *testing.T) {
