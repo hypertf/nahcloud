@@ -1,12 +1,18 @@
 package sqlite
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/hypertf/nahcloud/domain"
 	"github.com/stretchr/testify/require"
 )
+
+func TestGraphCreateForeignKeyRaceIsConflict(t *testing.T) {
+	err := graphWriteError("network", "private", errors.New("FOREIGN KEY constraint failed"))
+	require.True(t, domain.IsConflict(err), err)
+}
 
 func graphRepositoryFixture(t *testing.T) (*DB, *GraphRepository) {
 	t.Helper()

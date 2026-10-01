@@ -20,7 +20,7 @@ func graphWriteError(resource, value string, err error) error {
 		return domain.AlreadyExistsError(resource, "identity", value)
 	}
 	if strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
-		return domain.ForeignKeyViolationError(resource, "parent", value)
+		return domain.ConflictError(resource + " parent changed during create")
 	}
 	return fmt.Errorf("write %s: %w", resource, err)
 }

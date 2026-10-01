@@ -514,8 +514,16 @@ func (h *Handler) DeleteGraphResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.graph.Delete(graphScope(org, project), mux.Vars(r)["kind"], mux.Vars(r)["id"]); err != nil {
-		h.renderFormError(w, err.Error())
+		h.renderGraphError(w, err.Error())
 		return
 	}
 	h.renderCloud(w, r, org, project)
+}
+
+func (h *Handler) renderGraphError(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("HX-Retarget", "#graph-error")
+	w.Header().Set("HX-Reswap", "innerHTML")
+	w.WriteHeader(http.StatusConflict)
+	_, _ = w.Write([]byte(`<div class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">` + template.HTMLEscapeString(message) + `</div>`))
 }

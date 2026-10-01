@@ -176,6 +176,36 @@ func TestCloudGraphProductionAdapterCreatesAndReadsRelationships(t *testing.T) {
 	require.Equal(t, []string{"instances.get", "disks.get"}, snapshot.Policies[0].Actions)
 }
 
+func TestCloudGraphDeleteFailureTargetsVisibleAlert(t *testing.T) {
+	h, svc := newWebGraphTestHandler(t)
+	org, project := createGraphOrgProject(t, svc)
+	h.graph = &fixtureGraphConsole{err: domain.ConflictError("network is in use")}
+	req := httptest.NewRequest(http.MethodDelete, "/projects/edge/cloud/network/network-id", nil)
+	req = mux.SetURLVars(req, map[string]string{"project": project.Slug, "kind": "network", "id": "network-id"})
+	req = req.WithContext(auth.WithOrg(req.Context(), &org.Organization))
+	response := httptest.NewRecorder()
+
+	h.DeleteGraphResource(response, req)
+
+	require.Equal(t, http.StatusConflict, response.Code)
+	require.Equal(t, "#graph-error", response.Header().Get("HX-Retarget"))
+	require.Contains(t, response.Body.String(), "network is in use")
+}
+
+func TestCloudGraphPageHasResponsiveAndAccessibleShell(t *testing.T) {
+	h, svc := newWebGraphTestHandler(t)
+	org, project := createGraphOrgProject(t, svc)
+	h.graph = &fixtureGraphConsole{snapshot: graphFixture()}
+	response := httptest.NewRecorder()
+	h.ListCloud(response, graphRequest(&org.Organization, project, false))
+	body := response.Body.String()
+	require.Contains(t, body, `<html lang="en">`)
+	require.Contains(t, body, `name="viewport"`)
+	require.Contains(t, body, `role="dialog"`)
+	require.Contains(t, body, `id="graph-error" role="alert"`)
+	require.Contains(t, body, `.cloud-graph`)
+}
+
 func TestCloudGraphHandlerRejectsAnotherOrganizationsProjectBeforeAdapter(t *testing.T) {
 	h, svc := newWebGraphTestHandler(t)
 	first, project := createGraphOrgProject(t, svc)

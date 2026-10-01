@@ -60,7 +60,6 @@ func migrateV2(tx *sql.Tx) error {
 	if err != nil || !projectsExist {
 		return err
 	}
-	legacy := false
 	for _, item := range []struct{ table, column, definition string }{
 		{"instances", "region", `TEXT NOT NULL DEFAULT 'us-east-1'`},
 		{"projects", "org_id", `TEXT`}, {"projects", "slug", `TEXT`},
@@ -71,17 +70,55 @@ func migrateV2(tx *sql.Tx) error {
 			return err
 		}
 		if !has {
-			legacy = true
 			if _, err := tx.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, item.table, item.column, item.definition)); err != nil {
 				return err
 			}
 		}
 	}
-	if !legacy {
-		return nil
+	legacy, err := needsV2Rebuild(tx)
+	if err != nil || !legacy {
+		return err
 	}
+
+	var unowned int
+	if err = tx.QueryRow(`SELECT
+		(SELECT COUNT(*) FROM projects WHERE org_id IS NULL OR slug IS NULL) +
+		(SELECT COUNT(*) FROM buckets WHERE project_id IS NULL) +
+		(SELECT COUNT(*) FROM metadata WHERE org_id IS NULL)`).Scan(&unowned); err != nil {
+		return err
+	}
+	if unowned > 0 {
+		if err = backfillV2Ownership(tx); err != nil {
+			return err
+		}
+	}
+	return rebuildV2Tables(tx)
+}
+
+func needsV2Rebuild(tx *sql.Tx) (bool, error) {
+	for _, item := range []struct{ table, column, parent string }{
+		{"projects", "org_id", "organizations"},
+		{"buckets", "project_id", "projects"},
+		{"metadata", "org_id", "organizations"},
+	} {
+		notNull, err := columnNotNull(tx, item.table, item.column)
+		if err != nil {
+			return false, err
+		}
+		foreignKey, err := hasForeignKey(tx, item.table, item.column, item.parent)
+		if err != nil {
+			return false, err
+		}
+		if !notNull || !foreignKey {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func backfillV2Ownership(tx *sql.Tx) error {
 	var orgID string
-	err = tx.QueryRow(`SELECT id FROM organizations ORDER BY created_at LIMIT 1`).Scan(&orgID)
+	err := tx.QueryRow(`SELECT id FROM organizations ORDER BY created_at,id LIMIT 1`).Scan(&orgID)
 	if err == sql.ErrNoRows {
 		orgID = "default-org"
 		if _, err = tx.Exec(`INSERT INTO organizations(id,slug,name) VALUES(?,?,?)`, orgID, orgID, "Default Organization"); err != nil {
@@ -90,11 +127,14 @@ func migrateV2(tx *sql.Tx) error {
 	} else if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`UPDATE projects SET org_id=?, slug=name WHERE org_id IS NULL OR slug IS NULL`, orgID); err != nil {
+	if _, err = tx.Exec(`UPDATE projects SET org_id=COALESCE(org_id,?), slug=COALESCE(slug,name) WHERE org_id IS NULL OR slug IS NULL`, orgID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`UPDATE metadata SET org_id=? WHERE org_id IS NULL`, orgID); err != nil {
 		return err
 	}
 	var projectID string
-	err = tx.QueryRow(`SELECT id FROM projects ORDER BY created_at LIMIT 1`).Scan(&projectID)
+	err = tx.QueryRow(`SELECT id FROM projects ORDER BY created_at,id LIMIT 1`).Scan(&projectID)
 	if err == sql.ErrNoRows {
 		projectID = "default-project"
 		if _, err = tx.Exec(`INSERT INTO projects(id,name,org_id,slug) VALUES(?,?,?,?)`, projectID, "Default Project", orgID, projectID); err != nil {
@@ -103,11 +143,76 @@ func migrateV2(tx *sql.Tx) error {
 	} else if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`UPDATE buckets SET project_id=? WHERE project_id IS NULL`, projectID); err != nil {
-		return err
-	}
-	_, err = tx.Exec(`UPDATE metadata SET org_id=? WHERE org_id IS NULL`, orgID)
+	_, err = tx.Exec(`UPDATE buckets SET project_id=? WHERE project_id IS NULL`, projectID)
 	return err
+}
+
+func rebuildV2Tables(tx *sql.Tx) error {
+	// Rename the whole legacy ownership chain first so SQLite updates its
+	// internal foreign-key references consistently. New tables can then be
+	// created with the v0.2 constraints and populated without dropping data.
+	for _, table := range []string{"objects", "buckets", "instances", "projects", "metadata"} {
+		if _, err := tx.Exec(`ALTER TABLE ` + table + ` RENAME TO ` + table + `_v1`); err != nil {
+			return err
+		}
+	}
+	for _, statement := range []string{baseSchema[2], baseSchema[3], baseSchema[4], baseSchema[5], baseSchema[6]} {
+		if _, err := tx.Exec(statement); err != nil {
+			return err
+		}
+	}
+	for _, statement := range []string{
+		`INSERT INTO projects(id,org_id,slug,name,created_at,updated_at) SELECT id,org_id,slug,name,created_at,updated_at FROM projects_v1`,
+		`INSERT INTO instances(id,project_id,name,region,cpu,memory_mb,image,status,created_at,updated_at) SELECT id,project_id,name,region,cpu,memory_mb,image,status,created_at,updated_at FROM instances_v1`,
+		`INSERT INTO metadata(id,org_id,path,value,created_at,updated_at) SELECT id,org_id,path,value,created_at,updated_at FROM metadata_v1`,
+		`INSERT INTO buckets(id,project_id,name,created_at,updated_at) SELECT id,project_id,name,created_at,updated_at FROM buckets_v1`,
+		`INSERT INTO objects(id,bucket_id,path,content,created_at,updated_at) SELECT id,bucket_id,path,content,created_at,updated_at FROM objects_v1`,
+		`DROP TABLE objects_v1`, `DROP TABLE buckets_v1`, `DROP TABLE instances_v1`, `DROP TABLE projects_v1`, `DROP TABLE metadata_v1`,
+	} {
+		if _, err := tx.Exec(statement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func columnNotNull(tx *sql.Tx, table, column string) (bool, error) {
+	rows, err := tx.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, dataType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return false, err
+		}
+		if name == column {
+			return notNull == 1, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+func hasForeignKey(tx *sql.Tx, table, column, parent string) (bool, error) {
+	rows, err := tx.Query(`PRAGMA foreign_key_list(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, sequence int
+		var target, from, to, onUpdate, onDelete, match string
+		if err := rows.Scan(&id, &sequence, &target, &from, &to, &onUpdate, &onDelete, &match); err != nil {
+			return false, err
+		}
+		if from == column && target == parent {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func migrateV3(tx *sql.Tx) error {

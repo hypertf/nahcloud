@@ -1,11 +1,18 @@
 package service
 
 import (
+	"math"
 	"testing"
 
 	"github.com/hypertf/nahcloud/domain"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFaultRuleRejectsValuesOutsideSQLiteIntegerRange(t *testing.T) {
+	tooLarge := uint64(math.MaxInt64) + 1
+	err := validateFaultRule(&domain.FaultRule{Method: faultString("GET"), StatusCode: faultInt(503), EveryNth: tooLarge, FailurePercent: 100})
+	require.ErrorContains(t, err, "must not exceed")
+}
 
 func faultString(value string) *string { return &value }
 func faultInt(value int) *int          { return &value }

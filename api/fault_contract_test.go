@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -109,6 +110,7 @@ func TestFaultRuleRequestSafety(t *testing.T) {
 		map[string]any{"method": "GET", "delay_ms": 2001},
 		map[string]any{"method": "GET", "status_code": 500, "unknown": true},
 		map[string]any{"method": "GET", "status_code": 500, "id": "forged"},
+		map[string]any{"method": "GET", "status_code": 500, "every_nth": uint64(math.MaxInt64) + 1},
 	} {
 		response := performRequest(t, router, http.MethodPost, "/v1/fault-rules", body, org.APIKey.Token)
 		require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())

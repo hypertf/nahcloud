@@ -74,6 +74,14 @@ func TestMigrateV01PreservesData(t *testing.T) {
 	require.NoError(t, db.QueryRow(`SELECT org_id,slug FROM projects WHERE id='legacy-project'`).Scan(&org, &slug))
 	require.Equal(t, "default-org", org)
 	require.Equal(t, "legacy", slug)
+	assertV2OwnershipConstraints(t, db)
+
+	_, err := db.Exec(`INSERT INTO organizations(id,slug,name) VALUES('second-org','second-org','Second')`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO projects(id,org_id,slug,name) VALUES('second-project','second-org','second','legacy')`)
+	require.NoError(t, err, "project names must not retain the v0.1 global uniqueness constraint")
+	_, err = db.Exec(`INSERT INTO buckets(id,project_id,name) VALUES('orphan',NULL,'orphan')`)
+	require.Error(t, err)
 }
 
 func TestMigrateInterruptedV01(t *testing.T) {
@@ -94,6 +102,47 @@ func TestMigrateInterruptedV01(t *testing.T) {
 	require.Equal(t, "legacy", slug)
 	require.NoError(t, db.QueryRow(`SELECT project_id FROM buckets WHERE id='legacy-bucket'`).Scan(&project))
 	require.Equal(t, "legacy-project", project)
+	assertV2OwnershipConstraints(t, db)
+}
+
+func TestMigrateInterruptedV01AfterAllColumnsBeforeBackfill(t *testing.T) {
+	path := t.TempDir() + "/interrupted-all-columns.db"
+	raw := rawDB(t, path)
+	execAll(t, raw, v01Schema())
+	execAll(t, raw, []string{
+		`CREATE TABLE organizations(id TEXT PRIMARY KEY,slug TEXT UNIQUE NOT NULL,name TEXT NOT NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`INSERT INTO organizations(id,slug,name) VALUES('partial-org','partial','Partial')`,
+		`ALTER TABLE projects ADD COLUMN org_id TEXT`,
+		`ALTER TABLE projects ADD COLUMN slug TEXT`,
+		`ALTER TABLE buckets ADD COLUMN project_id TEXT`,
+		`ALTER TABLE metadata ADD COLUMN org_id TEXT`,
+	})
+	require.NoError(t, raw.Close())
+
+	db := assertLatest(t, path)
+	defer db.Close()
+	for table, column := range map[string]string{"projects": "org_id", "buckets": "project_id", "metadata": "org_id"} {
+		var nulls int
+		require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE `+column+` IS NULL`).Scan(&nulls))
+		require.Zero(t, nulls)
+	}
+	assertV2OwnershipConstraints(t, db)
+}
+
+func assertV2OwnershipConstraints(t *testing.T, db *DB) {
+	t.Helper()
+	for _, item := range []struct{ table, column, parent string }{
+		{"projects", "org_id", "organizations"},
+		{"buckets", "project_id", "projects"},
+		{"metadata", "org_id", "organizations"},
+	} {
+		var notNull int
+		require.NoError(t, db.QueryRow(`SELECT "notnull" FROM pragma_table_info(?) WHERE name=?`, item.table, item.column).Scan(&notNull))
+		require.Equal(t, 1, notNull, "%s.%s must be NOT NULL", item.table, item.column)
+		var foreignKeys int
+		require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_list(?) WHERE "from"=? AND "table"=?`, item.table, item.column, item.parent).Scan(&foreignKeys))
+		require.Equal(t, 1, foreignKeys, "%s.%s must reference %s", item.table, item.column, item.parent)
+	}
 }
 
 func TestMigrateV02PreservesData(t *testing.T) {

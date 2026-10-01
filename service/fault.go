@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/hypertf/nahcloud/domain"
@@ -106,11 +107,17 @@ func validateFaultRule(rule *domain.FaultRule) error {
 	if rule.EveryNth < 1 {
 		return domain.InvalidInputError("every_nth must be at least 1", nil)
 	}
+	if rule.AfterMatches > math.MaxInt64 || rule.EveryNth > math.MaxInt64 {
+		return domain.InvalidInputError("fault counters must not exceed 9223372036854775807", nil)
+	}
 	if rule.FailurePercent < 1 || rule.FailurePercent > 100 {
 		return domain.InvalidInputError("failure_percent must be between 1 and 100", nil)
 	}
 	if rule.MaxTriggers != nil && *rule.MaxTriggers < 1 {
 		return domain.InvalidInputError("max_triggers must be null or at least 1", nil)
+	}
+	if rule.MaxTriggers != nil && *rule.MaxTriggers > math.MaxInt64 {
+		return domain.InvalidInputError("max_triggers must not exceed 9223372036854775807", nil)
 	}
 	if rule.StatusCode != nil && !domain.AllowedFaultStatusCodes[*rule.StatusCode] {
 		return domain.InvalidInputError("status_code is not allowlisted", nil)
