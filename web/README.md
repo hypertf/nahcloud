@@ -45,29 +45,33 @@ Other behavior:
 - Validation that respects API constraints
 - Responsive layout for routine browser-based operations
 
-## Proposed cloud graph contract
+## Frozen cloud graph contract
 
-The `/cloud` console intentionally depends on the narrow `GraphConsole` interface in
-`cloud_graph.go`, not on backend graph domain, service, API, or storage packages. Until
-those backend types exist, `NewHandler` uses a process-local preview adapter with seeded
-data. Preview mutations are non-persistent and are clearly labelled in the UI.
+The `/cloud` console depends on the narrow `GraphConsole` interface in `cloud_graph.go`,
+not directly on graph persistence or API handlers. `GraphScope` always carries the
+authenticated organization ID and the project ID resolved from the route slug. The current
+`main` branch has no corrected graph service contract, so the production adapter returns an
+explicit unavailable state. It never creates process-local placeholder resources.
 
-The adapter assumes every operation receives an already-authorized, stable project ID:
+The adapter and templates follow these frozen semantics:
 
-- **Networks** own zero or more subnets. A subnet has one network parent; CIDRs, regions,
-  and zones are display strings validated by the eventual backend.
-- **Disks** belong to one project and optionally attach to one project instance at a mount
-  path. The console expects resolved instance name/ID pairs in snapshots.
-- **Policies** own bindings. Each binding connects a principal and role to one target in
-  the same project (`network`, `disk`, `load-balancer`, or `instance`).
-- **Load balancers** own backends. Each backend references one project instance and
-  exposes port and health state.
-- **Fault scenarios** are explicit project/tenant-scoped testing operations. The assumed
-  kinds are `latency`, `packet-loss`, and `backend-outage`; enable/disable is idempotent.
-- Snapshot failures return an error without a partial graph. Deletes return not-found when
-  the resource is absent from the authorized project. Parent and target references must
-  also resolve inside that project.
+- **Networks** are project-scoped and own subnets. Network deletion is restricted while
+  subnets exist. Subnet deletion is restricted while instances or load balancers reference it.
+- **Disks** are project-scoped and have at most one attachment edge to a same-project,
+  same-region instance. Disk deletion is restricted while attached; deleting an attachment
+  removes only the edge.
+- **Policies** are organization-scoped. Bindings connect organization or API-key principals
+  to targets in the same organization. Deleting a policy cascades its bindings.
+- **Load balancers** are project- and subnet-scoped and own backend edges. Backend health is
+  computed as `enabled && instance.status == running`; no active probe is implied. Deleting a
+  load balancer cascades its backends.
+- **Instances** expose subnet, attached disks, and load-balancer memberships. Deleting an
+  instance cascades attachment edges, backend edges, and bindings targeting it; disks survive.
+- Every persisted node and edge has a stable, copyable opaque ID. Cross-tenant or wrong-parent
+  references return not found. Empty and adapter-error states never invent data.
+- **Fault Lab is read-only documentation/status.** Fault mutations remain API-key-only while
+  organization permalinks grant writable browser sessions.
 
-Backend integration should replace `newPreviewGraphConsole()` with an adapter over the
-graph service while preserving this interface. The web layer must continue resolving the
-organization and project slug before passing only the authorized project ID to the adapter.
+After PR #4's corrected service methods and domain types land, implement only
+`serviceGraphConsole` mapping. The handlers and templates should continue consuming these
+web view types so backend route or storage details do not leak into the console.

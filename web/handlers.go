@@ -28,7 +28,7 @@ type Handler struct {
 
 // NewHandler creates a new web handler
 func NewHandler(svc *service.Service) *Handler {
-	return &Handler{service: svc, graph: newPreviewGraphConsole()}
+	return &Handler{service: svc, graph: newServiceGraphConsole(svc)}
 }
 
 // PageContext contains common data for all pages

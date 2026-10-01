@@ -353,7 +353,7 @@ const projectsTemplate = `{{define "content"}}
                 <td class="px-6 py-4 border-b border-slate-100">
                     <div class="flex gap-2">
                         <button class="btn btn-secondary btn-sm" hx-get="/projects/{{.Slug}}/edit" hx-target="#modal-content">Edit</button>
-                        <button class="btn btn-danger btn-sm" hx-delete="/projects/{{.Slug}}" hx-target="closest tr" hx-confirm="Are you sure you want to delete this project?">Delete</button>
+                        <button class="btn btn-danger btn-sm" hx-delete="/projects/{{.Slug}}" hx-target="closest tr" hx-confirm="Delete this project? Deletion is restricted while any instance, bucket, network, disk, or load balancer remains. Remove those resources first.">Delete</button>
                     </div>
                 </td>
             </tr>
@@ -470,7 +470,7 @@ const instancesTemplate = `{{define "content"}}
                 <td class="px-6 py-4 border-b border-slate-100">
                     <div class="flex gap-2">
                         <button class="btn btn-secondary btn-sm" hx-get="/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}/edit" hx-target="#modal-content">Edit</button>
-                        <button class="btn btn-danger btn-sm" hx-delete="/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}" hx-target="closest tr" hx-confirm="Are you sure you want to delete this instance?">Delete</button>
+                        <button class="btn btn-danger btn-sm" hx-delete="/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}" hx-target="closest tr" hx-confirm="Delete this instance? Its disk attachment edges, load-balancer backends, and policy bindings targeting it will be deleted. The disks themselves survive.">Delete</button>
                     </div>
                 </td>
             </tr>

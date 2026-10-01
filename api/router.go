@@ -88,7 +88,6 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	webRouter.HandleFunc("/projects/{project}/cloud/new", webHandler.NewGraphResourceForm).Methods("GET")
 	webRouter.HandleFunc("/projects/{project}/cloud/resources", webHandler.CreateGraphResource).Methods("POST")
 	webRouter.HandleFunc("/projects/{project}/cloud/{kind}/{id}", webHandler.DeleteGraphResource).Methods("DELETE")
-	webRouter.HandleFunc("/projects/{project}/cloud/faults/{fault}", webHandler.SetGraphFault).Methods("POST")
 
 	// Storage (scoped to project)
 	webRouter.HandleFunc("/projects/{project}/storage", webHandler.ListStorage).Methods("GET")
