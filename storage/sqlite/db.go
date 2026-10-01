@@ -152,6 +152,57 @@ func (db *DB) initSchema() error {
 			expires_at DATETIME NOT NULL,
 			FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS networks (
+			id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, cidr TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE, UNIQUE(project_id, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS subnets (
+			id TEXT PRIMARY KEY, network_id TEXT NOT NULL, project_id TEXT NOT NULL, name TEXT NOT NULL, cidr TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE,
+			FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE, UNIQUE(network_id, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS disks (
+			id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, size_gb INTEGER NOT NULL CHECK(size_gb > 0),
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE, UNIQUE(project_id, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS disk_attachments (
+			id TEXT PRIMARY KEY, disk_id TEXT NOT NULL, project_id TEXT NOT NULL, instance_id TEXT NOT NULL, device TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (disk_id) REFERENCES disks(id) ON DELETE CASCADE,
+			FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+			FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE,
+			UNIQUE(disk_id, instance_id), UNIQUE(instance_id, device)
+		)`,
+		`CREATE TABLE IF NOT EXISTS policies (
+			id TEXT PRIMARY KEY, org_id TEXT NOT NULL, project_id TEXT, name TEXT NOT NULL, document TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
+			FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS policies_org_name ON policies(org_id, name) WHERE project_id IS NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS policies_project_name ON policies(project_id, name) WHERE project_id IS NOT NULL`,
+		`CREATE TABLE IF NOT EXISTS policy_bindings (
+			id TEXT PRIMARY KEY, policy_id TEXT NOT NULL, principal TEXT NOT NULL, role TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (policy_id) REFERENCES policies(id) ON DELETE CASCADE, UNIQUE(policy_id, principal, role)
+		)`,
+		`CREATE TABLE IF NOT EXISTS load_balancers (
+			id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, protocol TEXT NOT NULL, port INTEGER NOT NULL CHECK(port BETWEEN 1 AND 65535),
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE, UNIQUE(project_id, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS load_balancer_backends (
+			id TEXT PRIMARY KEY, load_balancer_id TEXT NOT NULL, project_id TEXT NOT NULL, instance_id TEXT NOT NULL,
+			port INTEGER NOT NULL CHECK(port BETWEEN 1 AND 65535), weight INTEGER NOT NULL CHECK(weight BETWEEN 1 AND 100),
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (load_balancer_id) REFERENCES load_balancers(id) ON DELETE CASCADE,
+			FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+			FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE,
+			UNIQUE(load_balancer_id, instance_id, port)
+		)`,
 	}
 
 	for _, schema := range schemas {

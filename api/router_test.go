@@ -31,6 +31,7 @@ func newTestRouter(t *testing.T) http.Handler {
 		sqlite.NewMetadataRepository(db),
 		sqlite.NewBucketRepository(db),
 		sqlite.NewObjectRepository(db),
+		sqlite.NewGraphRepository(db),
 	)
 	return SetupRouter(NewHandler(svc), svc, "test")
 }
@@ -221,4 +222,84 @@ func TestTerraformStateBackendIsScopedAndLocksAtomically(t *testing.T) {
 	unlockResponse = stateRequest("UNLOCK", "deploy", `{"ID":"deploy-lock"}`, firstOrg.APIKey.Token)
 	require.Equal(t, http.StatusOK, unlockResponse.Code, unlockResponse.Body.String())
 	require.Equal(t, http.StatusOK, stateRequest(http.MethodPost, "deploy", `{"serial":3}`, firstOrg.APIKey.Token).Code)
+}
+
+func TestGraphResourceAPIContractsAndTenantIsolation(t *testing.T) {
+	handler := newTestRouter(t)
+	first := createTestOrganization(t, handler, "graph-first")
+	second := createTestOrganization(t, handler, "graph-second")
+	createProject := func(org domain.OrganizationWithAPIKey) {
+		response := performRequest(t, handler, http.MethodPost, "/v1/projects", domain.CreateProjectRequest{Slug: "cloud", Name: "Cloud"}, org.APIKey.Token)
+		require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+	}
+	createProject(first)
+	createProject(second)
+
+	instanceResponse := performRequest(t, handler, http.MethodPost, "/v1/projects/cloud/instances", domain.CreateInstanceRequest{Name: "app", Region: domain.RegionUSEast1, CPU: 1, MemoryMB: 512, Image: "test"}, first.APIKey.Token)
+	require.Equal(t, http.StatusCreated, instanceResponse.Code, instanceResponse.Body.String())
+	var instance domain.Instance
+	require.NoError(t, json.Unmarshal(instanceResponse.Body.Bytes(), &instance))
+
+	networkResponse := performRequest(t, handler, http.MethodPost, "/v1/projects/cloud/networks", domain.CreateNetworkRequest{Name: "private", CIDR: "10.1.0.0/16"}, first.APIKey.Token)
+	require.Equal(t, http.StatusCreated, networkResponse.Code, networkResponse.Body.String())
+	var network domain.Network
+	require.NoError(t, json.Unmarshal(networkResponse.Body.Bytes(), &network))
+	require.NotEqual(t, network.Name, network.ID)
+	subnetResponse := performRequest(t, handler, http.MethodPost, "/v1/projects/cloud/networks/"+network.ID+"/subnets", domain.CreateSubnetRequest{Name: "apps", CIDR: "10.1.1.0/24"}, first.APIKey.Token)
+	require.Equal(t, http.StatusCreated, subnetResponse.Code, subnetResponse.Body.String())
+	var subnet domain.Subnet
+	require.NoError(t, json.Unmarshal(subnetResponse.Body.Bytes(), &subnet))
+	newCIDR := "10.1.2.0/24"
+	response := performRequest(t, handler, http.MethodPatch, "/v1/projects/cloud/networks/"+network.ID+"/subnets/"+subnet.ID, domain.UpdateSubnetRequest{CIDR: &newCIDR}, first.APIKey.Token)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Contains(t, response.Body.String(), newCIDR)
+	response = performRequest(t, handler, http.MethodGet, "/v1/projects/cloud/networks/"+network.ID, nil, second.APIKey.Token)
+	require.Equal(t, http.StatusNotFound, response.Code)
+
+	diskResponse := performRequest(t, handler, http.MethodPost, "/v1/projects/cloud/disks", domain.CreateDiskRequest{Name: "data", SizeGB: 10}, first.APIKey.Token)
+	require.Equal(t, http.StatusCreated, diskResponse.Code, diskResponse.Body.String())
+	var disk domain.Disk
+	require.NoError(t, json.Unmarshal(diskResponse.Body.Bytes(), &disk))
+	attachmentResponse := performRequest(t, handler, http.MethodPost, "/v1/projects/cloud/disks/"+disk.ID+"/attachments", domain.CreateDiskAttachmentRequest{InstanceID: instance.ID, Device: "/dev/vdb"}, first.APIKey.Token)
+	require.Equal(t, http.StatusCreated, attachmentResponse.Code, attachmentResponse.Body.String())
+	var attachment domain.DiskAttachment
+	require.NoError(t, json.Unmarshal(attachmentResponse.Body.Bytes(), &attachment))
+	require.Equal(t, instance.ID, attachment.InstanceID)
+
+	orgPolicyResponse := performRequest(t, handler, http.MethodPost, "/v1/policies", domain.CreatePolicyRequest{Name: "organization", Document: `{"allow":["read"]}`}, first.APIKey.Token)
+	require.Equal(t, http.StatusCreated, orgPolicyResponse.Code, orgPolicyResponse.Body.String())
+	var orgPolicy domain.Policy
+	require.NoError(t, json.Unmarshal(orgPolicyResponse.Body.Bytes(), &orgPolicy))
+	require.Empty(t, orgPolicy.ProjectID)
+	projectPolicyResponse := performRequest(t, handler, http.MethodPost, "/v1/projects/cloud/policies", domain.CreatePolicyRequest{Name: "application", Document: `{}`}, first.APIKey.Token)
+	require.Equal(t, http.StatusCreated, projectPolicyResponse.Code, projectPolicyResponse.Body.String())
+	var projectPolicy domain.Policy
+	require.NoError(t, json.Unmarshal(projectPolicyResponse.Body.Bytes(), &projectPolicy))
+	require.NotEmpty(t, projectPolicy.ProjectID)
+	bindingResponse := performRequest(t, handler, http.MethodPost, "/v1/projects/cloud/policies/"+projectPolicy.ID+"/bindings", domain.CreatePolicyBindingRequest{Principal: "service:app", Role: "reader"}, first.APIKey.Token)
+	require.Equal(t, http.StatusCreated, bindingResponse.Code, bindingResponse.Body.String())
+
+	lbResponse := performRequest(t, handler, http.MethodPost, "/v1/projects/cloud/load-balancers", domain.CreateLoadBalancerRequest{Name: "public", Protocol: "HTTP", Port: 80}, first.APIKey.Token)
+	require.Equal(t, http.StatusCreated, lbResponse.Code, lbResponse.Body.String())
+	var lb domain.LoadBalancer
+	require.NoError(t, json.Unmarshal(lbResponse.Body.Bytes(), &lb))
+	backendResponse := performRequest(t, handler, http.MethodPost, "/v1/projects/cloud/load-balancers/"+lb.ID+"/backends", domain.CreateLoadBalancerBackendRequest{InstanceID: instance.ID, Port: 8080, Weight: 10}, first.APIKey.Token)
+	require.Equal(t, http.StatusCreated, backendResponse.Code, backendResponse.Body.String())
+	var backend domain.LoadBalancerBackend
+	require.NoError(t, json.Unmarshal(backendResponse.Body.Bytes(), &backend))
+	weight := 20
+	response = performRequest(t, handler, http.MethodPatch, "/v1/projects/cloud/load-balancers/"+lb.ID+"/backends/"+backend.ID, domain.UpdateLoadBalancerBackendRequest{Weight: &weight}, first.APIKey.Token)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Contains(t, response.Body.String(), `"weight":20`)
+
+	for _, path := range []string{"/v1/projects/cloud/networks", "/v1/projects/cloud/disks", "/v1/policies", "/v1/projects/cloud/policies", "/v1/projects/cloud/load-balancers"} {
+		response = performRequest(t, handler, http.MethodGet, path, nil, first.APIKey.Token)
+		require.Equal(t, http.StatusOK, response.Code, path+": "+response.Body.String())
+		require.NotEqual(t, "null\n", response.Body.String(), path)
+	}
+
+	response = performRequest(t, handler, http.MethodDelete, "/v1/projects/cloud/networks/"+network.ID, nil, first.APIKey.Token)
+	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+	response = performRequest(t, handler, http.MethodGet, "/v1/projects/cloud/networks/"+network.ID, nil, first.APIKey.Token)
+	require.Equal(t, http.StatusNotFound, response.Code)
 }

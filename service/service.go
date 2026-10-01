@@ -21,6 +21,7 @@ type Service struct {
 	metadataRepo MetadataRepository
 	bucketRepo   BucketRepository
 	objectRepo   ObjectRepository
+	graphRepo    GraphRepository
 }
 
 // OrganizationRepository defines the interface for organization data operations
@@ -101,8 +102,55 @@ type ObjectRepository interface {
 	Delete(id string) error
 }
 
+type GraphRepository interface {
+	CreateNetwork(*domain.Network) error
+	GetNetwork(string) (*domain.Network, error)
+	ListNetworks(string) ([]*domain.Network, error)
+	UpdateNetwork(*domain.Network) error
+	DeleteNetwork(string) error
+	CreateSubnet(*domain.Subnet) error
+	GetSubnet(string) (*domain.Subnet, error)
+	ListSubnets(string) ([]*domain.Subnet, error)
+	UpdateSubnet(*domain.Subnet) error
+	DeleteSubnet(string) error
+	CreateDisk(*domain.Disk) error
+	GetDisk(string) (*domain.Disk, error)
+	ListDisks(string) ([]*domain.Disk, error)
+	UpdateDisk(*domain.Disk) error
+	DeleteDisk(string) error
+	CreateAttachment(*domain.DiskAttachment) error
+	GetAttachment(string) (*domain.DiskAttachment, error)
+	ListAttachments(string) ([]*domain.DiskAttachment, error)
+	UpdateAttachment(*domain.DiskAttachment) error
+	DeleteAttachment(string) error
+	CreatePolicy(*domain.Policy) error
+	GetPolicy(string) (*domain.Policy, error)
+	ListPolicies(string, string) ([]*domain.Policy, error)
+	UpdatePolicy(*domain.Policy) error
+	DeletePolicy(string) error
+	CreateBinding(*domain.PolicyBinding) error
+	GetBinding(string) (*domain.PolicyBinding, error)
+	ListBindings(string) ([]*domain.PolicyBinding, error)
+	UpdateBinding(*domain.PolicyBinding) error
+	DeleteBinding(string) error
+	CreateLoadBalancer(*domain.LoadBalancer) error
+	GetLoadBalancer(string) (*domain.LoadBalancer, error)
+	ListLoadBalancers(string) ([]*domain.LoadBalancer, error)
+	UpdateLoadBalancer(*domain.LoadBalancer) error
+	DeleteLoadBalancer(string) error
+	CreateBackend(*domain.LoadBalancerBackend) error
+	GetBackend(string) (*domain.LoadBalancerBackend, error)
+	ListBackends(string) ([]*domain.LoadBalancerBackend, error)
+	UpdateBackend(*domain.LoadBalancerBackend) error
+	DeleteBackend(string) error
+}
+
 // NewService creates a new service instance
-func NewService(orgRepo OrganizationRepository, apiKeyRepo APIKeyRepository, sessionRepo SessionRepository, projectRepo ProjectRepository, instanceRepo InstanceRepository, metadataRepo MetadataRepository, bucketRepo BucketRepository, objectRepo ObjectRepository) *Service {
+func NewService(orgRepo OrganizationRepository, apiKeyRepo APIKeyRepository, sessionRepo SessionRepository, projectRepo ProjectRepository, instanceRepo InstanceRepository, metadataRepo MetadataRepository, bucketRepo BucketRepository, objectRepo ObjectRepository, graphRepos ...GraphRepository) *Service {
+	var graphRepo GraphRepository
+	if len(graphRepos) > 0 {
+		graphRepo = graphRepos[0]
+	}
 	return &Service{
 		orgRepo:      orgRepo,
 		apiKeyRepo:   apiKeyRepo,
@@ -112,6 +160,7 @@ func NewService(orgRepo OrganizationRepository, apiKeyRepo APIKeyRepository, ses
 		metadataRepo: metadataRepo,
 		bucketRepo:   bucketRepo,
 		objectRepo:   objectRepo,
+		graphRepo:    graphRepo,
 	}
 }
 

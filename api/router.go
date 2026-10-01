@@ -140,6 +140,22 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	authAPI.HandleFunc("/projects/{project}/instances/{id}", handler.UpdateInstance).Methods("PATCH")
 	authAPI.HandleFunc("/projects/{project}/instances/{id}", handler.DeleteInstance).Methods("DELETE")
 
+	// Graph resources use stable opaque IDs at every item and child boundary.
+	registerGraph := func(base, kind string) {
+		authAPI.HandleFunc(base, handler.graphCollection(kind)).Methods("GET", "POST")
+		authAPI.HandleFunc(base+"/{id}", handler.graphItem(kind)).Methods("GET", "PATCH", "DELETE")
+	}
+	registerGraph("/projects/{project}/networks", "network")
+	registerGraph("/projects/{project}/networks/{network_id}/subnets", "subnet")
+	registerGraph("/projects/{project}/disks", "disk")
+	registerGraph("/projects/{project}/disks/{disk_id}/attachments", "attachment")
+	registerGraph("/policies", "policy")
+	registerGraph("/policies/{policy_id}/bindings", "binding")
+	registerGraph("/projects/{project}/policies", "policy")
+	registerGraph("/projects/{project}/policies/{policy_id}/bindings", "binding")
+	registerGraph("/projects/{project}/load-balancers", "load-balancer")
+	registerGraph("/projects/{project}/load-balancers/{load_balancer_id}/backends", "backend")
+
 	// Bucket routes (scoped to project)
 	authAPI.HandleFunc("/projects/{project}/buckets", handler.CreateBucket).Methods("POST")
 	authAPI.HandleFunc("/projects/{project}/buckets", handler.ListBuckets).Methods("GET")

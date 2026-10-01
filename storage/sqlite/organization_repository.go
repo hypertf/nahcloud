@@ -171,8 +171,11 @@ func (r *OrganizationRepository) Reset(id string) error {
 	if _, err := tx.Exec(`DELETE FROM metadata WHERE org_id = ?`, id); err != nil {
 		return fmt.Errorf("failed to delete organization metadata: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM policies WHERE org_id = ?`, id); err != nil {
+		return fmt.Errorf("failed to delete organization policies: %w", err)
+	}
 
-	// Projects cascade to instances, buckets, and objects.
+	// Projects cascade to all project-scoped resources.
 	if _, err := tx.Exec(`DELETE FROM projects WHERE org_id = ?`, id); err != nil {
 		return fmt.Errorf("failed to delete organization projects: %w", err)
 	}
