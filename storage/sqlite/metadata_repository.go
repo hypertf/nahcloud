@@ -47,6 +47,11 @@ func (r *MetadataRepository) Create(req domain.CreateMetadataRequest) (*domain.M
 
 	_, err = r.db.Exec(query, metadata.ID, metadata.OrgID, metadata.Path, metadata.Value, metadata.CreatedAt, metadata.UpdatedAt)
 	if err != nil {
+		// The preflight lookup improves error messages in the normal case, but
+		// the unique constraint is the atomic arbiter for concurrent creates.
+		if strings.Contains(err.Error(), "UNIQUE constraint failed: metadata.org_id, metadata.path") {
+			return nil, domain.AlreadyExistsError("metadata", "path", req.Path)
+		}
 		if strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
 			return nil, domain.ForeignKeyViolationError("organization", "id", req.OrgID)
 		}
