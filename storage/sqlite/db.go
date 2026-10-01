@@ -152,6 +152,28 @@ func (db *DB) initSchema() error {
 			expires_at DATETIME NOT NULL,
 			FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS fault_scenarios (
+			org_id TEXT PRIMARY KEY,
+			name TEXT NOT NULL DEFAULT '',
+			enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+			seed INTEGER NOT NULL DEFAULT 0,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS fault_rules (
+			org_id TEXT NOT NULL,
+			id TEXT NOT NULL,
+			position INTEGER NOT NULL,
+			operation TEXT NOT NULL,
+			route TEXT NOT NULL,
+			status INTEGER NOT NULL DEFAULT 0,
+			latency_ms INTEGER NOT NULL DEFAULT 0,
+			every_n INTEGER NOT NULL,
+			call_count INTEGER NOT NULL DEFAULT 0,
+			injected_count INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (org_id, id),
+			FOREIGN KEY (org_id) REFERENCES fault_scenarios(org_id) ON DELETE CASCADE
+		)`,
 	}
 
 	for _, schema := range schemas {

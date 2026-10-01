@@ -114,6 +114,14 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	// Authenticated API routes require an organization API token.
 	authAPI := api.PathPrefix("").Subrouter()
 	authAPI.Use(AuthMiddleware(svc))
+	authAPI.Use(handler.FaultMiddleware)
+
+	// Deterministic fault simulation controls (always excluded from injection).
+	if handler.faults != nil {
+		authAPI.HandleFunc("/faults/scenario", handler.PutFaultScenario).Methods("PUT")
+		authAPI.HandleFunc("/faults/scenario", handler.GetFaultScenario).Methods("GET")
+		authAPI.HandleFunc("/faults/scenario/reset", handler.ResetFaultScenario).Methods("POST")
+	}
 
 	// Organization routes (authenticated - returns current org)
 	authAPI.HandleFunc("/org", handler.GetOrganization).Methods("GET")

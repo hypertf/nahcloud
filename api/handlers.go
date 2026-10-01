@@ -12,13 +12,16 @@ import (
 // Handler handles HTTP requests
 type Handler struct {
 	service *service.Service
+	faults  *service.FaultService
 }
 
 // NewHandler creates a new handler
-func NewHandler(service *service.Service) *Handler {
-	return &Handler{
-		service: service,
+func NewHandler(svc *service.Service, faults ...*service.FaultService) *Handler {
+	h := &Handler{service: svc}
+	if len(faults) > 0 {
+		h.faults = faults[0]
 	}
+	return h
 }
 
 // writeJSON writes a JSON response
