@@ -120,7 +120,15 @@ func (r *APIKeyRepository) UpdateLastUsed(id string) error {
 
 // Delete deletes an API key by ID
 func (r *APIKeyRepository) Delete(id string) error {
-	result, err := r.db.Exec(`DELETE FROM api_keys WHERE id = ?`, id)
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`DELETE FROM policy_bindings WHERE principal_type='api_key' AND principal_id=?`, id); err != nil {
+		return err
+	}
+	result, err := tx.Exec(`DELETE FROM api_keys WHERE id=?`, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete API key: %w", err)
 	}
@@ -133,5 +141,5 @@ func (r *APIKeyRepository) Delete(id string) error {
 		return domain.NotFoundError("api_key", id)
 	}
 
-	return nil
+	return tx.Commit()
 }

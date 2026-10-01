@@ -132,15 +132,24 @@ func (r *BucketRepository) Update(id string, req domain.UpdateBucketRequest) (*d
 
 // Delete deletes a bucket by ID (and cascades to delete its objects)
 func (r *BucketRepository) Delete(id string) error {
-	// Ensure bucket exists
-	_, err := r.GetByID(id)
+	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
-	// Rely on FK ON DELETE CASCADE to remove objects
-	_, err = r.db.Exec(`DELETE FROM buckets WHERE id = ?`, id)
+	defer tx.Rollback()
+	var exists string
+	if err = tx.QueryRow(`SELECT id FROM buckets WHERE id=?`, id).Scan(&exists); err == sql.ErrNoRows {
+		return domain.NotFoundError("bucket", id)
+	} else if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM policy_bindings WHERE target_type='bucket' AND target_id=?`, id); err != nil {
+		return err
+	}
+	// Objects are removed by their foreign-key cascade.
+	_, err = tx.Exec(`DELETE FROM buckets WHERE id=?`, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete bucket: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }

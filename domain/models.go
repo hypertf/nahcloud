@@ -82,6 +82,7 @@ type Instance struct {
 	MemoryMB  int       `json:"memory_mb" db:"memory_mb"`
 	Image     string    `json:"image" db:"image"`
 	Status    string    `json:"status" db:"status"`
+	SubnetID  *string   `json:"subnet_id" db:"subnet_id"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
@@ -187,13 +188,14 @@ type UpdateProjectRequest struct {
 
 // CreateInstanceRequest represents the request to create an instance
 type CreateInstanceRequest struct {
-	ProjectID string `json:"project_id"`
-	Name      string `json:"name"`
-	Region    string `json:"region"`
-	CPU       int    `json:"cpu"`
-	MemoryMB  int    `json:"memory_mb"`
-	Image     string `json:"image"`
-	Status    string `json:"status,omitempty"`
+	ProjectID string  `json:"project_id"`
+	Name      string  `json:"name"`
+	Region    string  `json:"region"`
+	CPU       int     `json:"cpu"`
+	MemoryMB  int     `json:"memory_mb"`
+	Image     string  `json:"image"`
+	Status    string  `json:"status,omitempty"`
+	SubnetID  *string `json:"subnet_id,omitempty"`
 }
 
 // UpdateInstanceRequest represents the request to update an instance
@@ -203,6 +205,7 @@ type UpdateInstanceRequest struct {
 	MemoryMB *int    `json:"memory_mb,omitempty"`
 	Image    *string `json:"image,omitempty"`
 	Status   *string `json:"status,omitempty"`
+	SubnetID *string `json:"subnet_id,omitempty"`
 }
 
 // ProjectListOptions represents query options for listing projects

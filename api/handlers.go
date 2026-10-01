@@ -48,6 +48,12 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 	} else if domain.IsUnauthorized(err) {
 		status = http.StatusUnauthorized
 		message = err.Error()
+	} else if domain.IsConflict(err) {
+		status = http.StatusConflict
+		message = err.Error()
+	} else if domain.IsLimitExceeded(err) {
+		status = http.StatusTooManyRequests
+		message = err.Error()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
