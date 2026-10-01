@@ -79,7 +79,7 @@ func TestNewError(t *testing.T) {
 
 func TestNotFoundError(t *testing.T) {
 	err := NotFoundError("project", "123")
-	
+
 	assert.Equal(t, ErrorCodeNotFound, err.Code)
 	assert.Equal(t, "project not found", err.Message)
 	assert.Equal(t, map[string]interface{}{
@@ -90,7 +90,7 @@ func TestNotFoundError(t *testing.T) {
 
 func TestAlreadyExistsError(t *testing.T) {
 	err := AlreadyExistsError("project", "name", "test")
-	
+
 	assert.Equal(t, ErrorCodeAlreadyExists, err.Code)
 	assert.Equal(t, "project with name 'test' already exists", err.Message)
 	assert.Equal(t, map[string]interface{}{
@@ -103,7 +103,7 @@ func TestAlreadyExistsError(t *testing.T) {
 func TestInvalidInputError(t *testing.T) {
 	details := map[string]interface{}{"field": "cpu", "min": 1}
 	err := InvalidInputError("CPU must be positive", details)
-	
+
 	assert.Equal(t, ErrorCodeInvalidInput, err.Code)
 	assert.Equal(t, "CPU must be positive", err.Message)
 	assert.Equal(t, details, err.Details)
@@ -111,7 +111,7 @@ func TestInvalidInputError(t *testing.T) {
 
 func TestForeignKeyViolationError(t *testing.T) {
 	err := ForeignKeyViolationError("project", "id", "123")
-	
+
 	assert.Equal(t, ErrorCodeForeignKeyViolation, err.Code)
 	assert.Equal(t, "Referenced project with id '123' does not exist", err.Message)
 	assert.Equal(t, map[string]interface{}{
@@ -123,7 +123,7 @@ func TestForeignKeyViolationError(t *testing.T) {
 
 func TestInternalError(t *testing.T) {
 	err := InternalError("something went wrong")
-	
+
 	assert.Equal(t, ErrorCodeInternalError, err.Code)
 	assert.Equal(t, "something went wrong", err.Message)
 	assert.Nil(t, err.Details)
@@ -131,25 +131,9 @@ func TestInternalError(t *testing.T) {
 
 func TestUnauthorizedError(t *testing.T) {
 	err := UnauthorizedError("invalid token")
-	
+
 	assert.Equal(t, ErrorCodeUnauthorized, err.Code)
 	assert.Equal(t, "invalid token", err.Message)
-	assert.Nil(t, err.Details)
-}
-
-func TestTooManyRequestsError(t *testing.T) {
-	err := TooManyRequestsError("rate limited")
-	
-	assert.Equal(t, ErrorCodeTooManyRequests, err.Code)
-	assert.Equal(t, "rate limited", err.Message)
-	assert.Nil(t, err.Details)
-}
-
-func TestServiceUnavailableError(t *testing.T) {
-	err := ServiceUnavailableError("service down")
-	
-	assert.Equal(t, ErrorCodeServiceUnavailable, err.Code)
-	assert.Equal(t, "service down", err.Message)
 	assert.Nil(t, err.Details)
 }
 

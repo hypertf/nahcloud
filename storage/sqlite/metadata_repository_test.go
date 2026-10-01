@@ -23,6 +23,7 @@ func TestMetadataRepository_Create(t *testing.T) {
 		{
 			name: "simple create",
 			req: domain.CreateMetadataRequest{
+				OrgID: testOrgID,
 				Path:  "/config/app.yaml",
 				Value: "database: localhost",
 			},
@@ -31,6 +32,7 @@ func TestMetadataRepository_Create(t *testing.T) {
 		{
 			name: "create with nested path",
 			req: domain.CreateMetadataRequest{
+				OrgID: testOrgID,
 				Path:  "/config/auth/ldap.yaml",
 				Value: "server: ldap.example.com",
 			},
@@ -39,6 +41,7 @@ func TestMetadataRepository_Create(t *testing.T) {
 		{
 			name: "create with empty value",
 			req: domain.CreateMetadataRequest{
+				OrgID: testOrgID,
 				Path:  "/empty",
 				Value: "",
 			},
@@ -47,6 +50,7 @@ func TestMetadataRepository_Create(t *testing.T) {
 		{
 			name: "duplicate path should fail",
 			req: domain.CreateMetadataRequest{
+				OrgID: testOrgID,
 				Path:  "/config/app.yaml", // Same as first test
 				Value: "different value",
 			},
@@ -88,6 +92,7 @@ func TestMetadataRepository_GetByID(t *testing.T) {
 
 	// Create test metadata
 	req := domain.CreateMetadataRequest{
+		OrgID: testOrgID,
 		Path:  "/config/app.yaml",
 		Value: "database: localhost",
 	}
@@ -151,6 +156,7 @@ func TestMetadataRepository_Update(t *testing.T) {
 
 	// Create test metadata
 	req1 := domain.CreateMetadataRequest{
+		OrgID: testOrgID,
 		Path:  "/config/app.yaml",
 		Value: "database: localhost",
 	}
@@ -158,6 +164,7 @@ func TestMetadataRepository_Update(t *testing.T) {
 	require.NoError(t, err)
 
 	req2 := domain.CreateMetadataRequest{
+		OrgID: testOrgID,
 		Path:  "/config/other.yaml",
 		Value: "other: value",
 	}
@@ -262,12 +269,12 @@ func TestMetadataRepository_List(t *testing.T) {
 
 	// Set up test data
 	testData := []domain.CreateMetadataRequest{
-		{Path: "/config/app.yaml", Value: "app config"},
-		{Path: "/config/database.yaml", Value: "db config"},
-		{Path: "/config/auth/ldap.yaml", Value: "ldap config"},
-		{Path: "/config/auth/oauth.yaml", Value: "oauth config"},
-		{Path: "/data/users.json", Value: "users data"},
-		{Path: "/data/logs/app.log", Value: "log data"},
+		{OrgID: testOrgID, Path: "/config/app.yaml", Value: "app config"},
+		{OrgID: testOrgID, Path: "/config/database.yaml", Value: "db config"},
+		{OrgID: testOrgID, Path: "/config/auth/ldap.yaml", Value: "ldap config"},
+		{OrgID: testOrgID, Path: "/config/auth/oauth.yaml", Value: "oauth config"},
+		{OrgID: testOrgID, Path: "/data/users.json", Value: "users data"},
+		{OrgID: testOrgID, Path: "/data/logs/app.log", Value: "log data"},
 	}
 
 	var createdMetadata []*domain.Metadata
@@ -278,10 +285,10 @@ func TestMetadataRepository_List(t *testing.T) {
 	}
 
 	tests := []struct {
-		name            string
-		prefix          string
-		expectedPaths   []string
-		expectedLength  int
+		name           string
+		prefix         string
+		expectedPaths  []string
+		expectedLength int
 	}{
 		{
 			name:   "list all",
@@ -379,6 +386,7 @@ func TestMetadataRepository_Delete(t *testing.T) {
 
 	// Create test metadata
 	req := domain.CreateMetadataRequest{
+		OrgID: testOrgID,
 		Path:  "/config/app.yaml",
 		Value: "database: localhost",
 	}
@@ -443,6 +451,7 @@ func TestMetadataRepository_PathUniqueness(t *testing.T) {
 
 	// Create first metadata
 	req1 := domain.CreateMetadataRequest{
+		OrgID: testOrgID,
 		Path:  path,
 		Value: "first value",
 	}
@@ -451,6 +460,7 @@ func TestMetadataRepository_PathUniqueness(t *testing.T) {
 
 	// Try to create another with same path
 	req2 := domain.CreateMetadataRequest{
+		OrgID: testOrgID,
 		Path:  path,
 		Value: "second value",
 	}
@@ -476,12 +486,13 @@ func TestMetadataRepository_pathExists(t *testing.T) {
 	path := "/config/app.yaml"
 
 	// Initially should not exist
-	exists, err := repo.pathExists(path)
+	exists, err := repo.pathExists(testOrgID, path)
 	require.NoError(t, err)
 	assert.False(t, exists)
 
 	// Create metadata
 	req := domain.CreateMetadataRequest{
+		OrgID: testOrgID,
 		Path:  path,
 		Value: "test value",
 	}
@@ -489,12 +500,12 @@ func TestMetadataRepository_pathExists(t *testing.T) {
 	require.NoError(t, err)
 
 	// Now should exist
-	exists, err = repo.pathExists(path)
+	exists, err = repo.pathExists(testOrgID, path)
 	require.NoError(t, err)
 	assert.True(t, exists)
 
 	// Different path should not exist
-	exists, err = repo.pathExists("/different/path")
+	exists, err = repo.pathExists(testOrgID, "/different/path")
 	require.NoError(t, err)
 	assert.False(t, exists)
 }
