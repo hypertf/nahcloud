@@ -26,20 +26,34 @@ func OrgFromContext(ctx context.Context) *domain.Organization {
 	return auth.OrgFromContext(ctx)
 }
 
-// AuthMiddleware creates middleware that validates org tokens for API routes
-// It checks Authorization header first, then falls back to cookie
-// If no valid token found, it auto-creates a new org and sets a cookie
+// AuthMiddleware creates middleware that validates organization API tokens.
+// It accepts bearer authentication, Terraform HTTP backend basic authentication,
+// and the browser API-token cookie.
 func AuthMiddleware(svc *service.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var token string
+			credentialSupplied := false
 
 			// Try Authorization header first
 			authHeader := r.Header.Get("Authorization")
 			if authHeader != "" {
+				credentialSupplied = true
 				parts := strings.SplitN(authHeader, " ", 2)
 				if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
 					token = parts[1]
+				}
+			}
+
+			// Terraform's HTTP backend supports basic authentication. Use the API
+			// token as the password (`username = "nah"`) or as the username for
+			// clients that cannot send an empty password.
+			if username, password, ok := r.BasicAuth(); ok {
+				credentialSupplied = true
+				if password != "" {
+					token = password
+				} else {
+					token = username
 				}
 			}
 
@@ -69,8 +83,8 @@ func AuthMiddleware(svc *service.Service) func(http.Handler) http.Handler {
 						SameSite: http.SameSiteLaxMode,
 					})
 				}
-				// If it was header auth, return error
-				if authHeader != "" {
+				// Explicit invalid credentials never create a new organization.
+				if credentialSupplied {
 					if domain.IsNotFound(err) || domain.IsUnauthorized(err) {
 						writeAuthError(w, "invalid token")
 						return
@@ -80,29 +94,7 @@ func AuthMiddleware(svc *service.Service) func(http.Handler) http.Handler {
 				}
 			}
 
-			// No valid token - auto-create org for API requests
-			orgWithKey, err := svc.CreateOrganizationWithAPIKey()
-			if err != nil {
-				writeServerError(w)
-				return
-			}
-
-			// Set API token cookie
-			http.SetCookie(w, &http.Cookie{
-				Name:     CookieAPIToken,
-				Value:    orgWithKey.APIKey.Token,
-				Path:     "/v1",
-				MaxAge:   int(APITokenMaxAge.Seconds()),
-				HttpOnly: true,
-				SameSite: http.SameSiteLaxMode,
-				// Secure: true, // Enable in production with HTTPS
-			})
-
-			// Also return the token in the response header for clients to save
-			w.Header().Set("X-API-Token", orgWithKey.APIKey.Token)
-
-			ctx := auth.WithOrg(r.Context(), &orgWithKey.Organization)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			writeAuthError(w, "API token required")
 		})
 	}
 }

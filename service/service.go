@@ -360,8 +360,11 @@ func (s *Service) GetOrganizationByToken(token string) (*domain.Organization, er
 		return nil, err
 	}
 
-	// Update last used timestamp (fire and forget)
-	go s.apiKeyRepo.UpdateLastUsed(apiKey.ID)
+	// Avoid a SQLite write on every provider request while keeping this useful
+	// enough for key-management UI and audits.
+	if apiKey.LastUsedAt == nil || time.Since(*apiKey.LastUsedAt) >= 5*time.Minute {
+		_ = s.apiKeyRepo.UpdateLastUsed(apiKey.ID)
+	}
 
 	return s.orgRepo.GetByID(apiKey.OrgID)
 }
@@ -439,6 +442,18 @@ func (s *Service) CreateAPIKey(orgID string, req domain.CreateAPIKeyRequest) (*d
 	return s.createAPIKey(orgID, name)
 }
 
+// GetAPIKey retrieves an API key only when it belongs to the organization.
+func (s *Service) GetAPIKey(orgID, keyID string) (*domain.APIKey, error) {
+	key, err := s.apiKeyRepo.GetByID(keyID)
+	if err != nil {
+		return nil, err
+	}
+	if key.OrgID != orgID {
+		return nil, domain.NotFoundError("api_key", keyID)
+	}
+	return key, nil
+}
+
 // ListAPIKeys lists all API keys for an organization
 func (s *Service) ListAPIKeys(orgID string) ([]*domain.APIKey, error) {
 	return s.apiKeyRepo.ListByOrgID(orgID)
@@ -446,13 +461,8 @@ func (s *Service) ListAPIKeys(orgID string) ([]*domain.APIKey, error) {
 
 // DeleteAPIKey deletes an API key
 func (s *Service) DeleteAPIKey(orgID, keyID string) error {
-	// Verify the key belongs to the org
-	key, err := s.apiKeyRepo.GetByID(keyID)
-	if err != nil {
+	if _, err := s.GetAPIKey(orgID, keyID); err != nil {
 		return err
-	}
-	if key.OrgID != orgID {
-		return domain.NotFoundError("api_key", keyID)
 	}
 
 	return s.apiKeyRepo.Delete(keyID)
@@ -856,15 +866,19 @@ func (s *Service) CreateBucket(projectID string, req domain.CreateBucketRequest)
 		return nil, err
 	}
 
-	// Use name as the stable identifier (ID) - scoped by project
-	b := &domain.Bucket{ID: req.Name, ProjectID: projectID, Name: req.Name}
+	id, err := generateID()
+	if err != nil {
+		return nil, domain.InternalError("failed to generate bucket ID")
+	}
+
+	b := &domain.Bucket{ID: id, ProjectID: projectID, Name: req.Name}
 	if err := s.bucketRepo.Create(b); err != nil {
 		return nil, err
 	}
 	return b, nil
 }
 
-// GetBucket retrieves a bucket by ID (or name, if name is the identifier)
+// GetBucket retrieves a bucket by ID.
 func (s *Service) GetBucket(id string) (*domain.Bucket, error) {
 	return s.bucketRepo.GetByID(id)
 }
@@ -879,30 +893,12 @@ func (s *Service) ListBuckets(opts domain.BucketListOptions) ([]*domain.Bucket, 
 	return s.bucketRepo.List(opts)
 }
 
-// UpdateBucket updates an existing bucket
-// With IDs equal to names, bucket name is immutable. Attempting to change it will return an error.
+// UpdateBucket updates an existing bucket.
 func (s *Service) UpdateBucket(id string, req domain.UpdateBucketRequest) (*domain.Bucket, error) {
 	if err := validateBucketName(req.Name); err != nil {
 		return nil, err
 	}
-	// Get current bucket to enforce immutability
-	current, err := s.bucketRepo.GetByID(id)
-	if err != nil {
-		return nil, err
-	}
-	if req.Name != current.Name {
-		return nil, domain.InvalidInputError(
-			"Cannot change bucket name from '"+current.Name+"' to '"+req.Name+"'. The name is immutable because it is used as the bucket ID. Destroy and recreate the bucket to change the name.",
-			map[string]interface{}{
-				"field":           "name",
-				"current_value":   current.Name,
-				"requested_value": req.Name,
-				"solution":        "Remove and re-add the resource, or recreate the bucket with the desired name",
-			},
-		)
-	}
-	// No-op update (name unchanged)
-	return current, nil
+	return s.bucketRepo.Update(id, req)
 }
 
 // DeleteBucket deletes a bucket

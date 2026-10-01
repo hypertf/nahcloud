@@ -1,31 +1,28 @@
 package service
 
 import (
+	"encoding/base64"
 	"encoding/json"
 
 	"github.com/hypertf/nahcloud/domain"
 )
 
-func tfStatePath(stateID string) string      { return "tfstate/" + stateID }
-func tfStateLockPath(stateID string) string { return "tfstate/" + stateID + ".lock" }
+func tfStatePath(stateID string) string {
+	return ".nahcloud/tfstate/" + base64.RawURLEncoding.EncodeToString([]byte(stateID)) + "/state"
+}
+
+func tfStateLockPath(stateID string) string {
+	return ".nahcloud/tfstate/" + base64.RawURLEncoding.EncodeToString([]byte(stateID)) + "/lock"
+}
 
 // metadataByExactPath finds metadata by exact path using prefix listing
-func (s *Service) metadataByExactPath(path string) (*domain.Metadata, error) {
-	items, err := s.metadataRepo.List(domain.MetadataListOptions{Prefix: path})
-	if err != nil {
-		return nil, err
-	}
-	for _, m := range items {
-		if m.Path == path {
-			return m, nil
-		}
-	}
-	return nil, domain.NotFoundError("metadata", path)
+func (s *Service) metadataByExactPath(orgID, path string) (*domain.Metadata, error) {
+	return s.metadataRepo.GetByPath(orgID, path)
 }
 
 // GetTFState returns the raw state JSON for a given state ID
-func (s *Service) GetTFState(stateID string) (string, error) {
-	m, err := s.metadataByExactPath(tfStatePath(stateID))
+func (s *Service) GetTFState(orgID, stateID string) (string, error) {
+	m, err := s.metadataByExactPath(orgID, tfStatePath(stateID))
 	if err != nil {
 		return "", err
 	}
@@ -33,12 +30,12 @@ func (s *Service) GetTFState(stateID string) (string, error) {
 }
 
 // SetTFState creates or updates the state JSON for a given state ID
-func (s *Service) SetTFState(stateID string, stateJSON string) error {
+func (s *Service) SetTFState(orgID, stateID string, stateJSON string) error {
 	path := tfStatePath(stateID)
-	m, err := s.metadataByExactPath(path)
+	m, err := s.metadataByExactPath(orgID, path)
 	if err != nil {
 		if domain.IsNotFound(err) {
-			_, err := s.metadataRepo.Create(domain.CreateMetadataRequest{Path: path, Value: stateJSON})
+			_, err := s.metadataRepo.Create(domain.CreateMetadataRequest{OrgID: orgID, Path: path, Value: stateJSON})
 			return err
 		}
 		return err
@@ -48,9 +45,9 @@ func (s *Service) SetTFState(stateID string, stateJSON string) error {
 }
 
 // DeleteTFState deletes the state entry if it exists
-func (s *Service) DeleteTFState(stateID string) error {
+func (s *Service) DeleteTFState(orgID, stateID string) error {
 	path := tfStatePath(stateID)
-	m, err := s.metadataByExactPath(path)
+	m, err := s.metadataByExactPath(orgID, path)
 	if err != nil {
 		if domain.IsNotFound(err) {
 			return nil
@@ -61,8 +58,8 @@ func (s *Service) DeleteTFState(stateID string) error {
 }
 
 // GetTFStateLock returns the current lock JSON and parsed lock info if present
-func (s *Service) GetTFStateLock(stateID string) (string, *domain.TFStateLock, error) {
-	m, err := s.metadataByExactPath(tfStateLockPath(stateID))
+func (s *Service) GetTFStateLock(orgID, stateID string) (string, *domain.TFStateLock, error) {
+	m, err := s.metadataByExactPath(orgID, tfStateLockPath(stateID))
 	if err != nil {
 		return "", nil, err
 	}
@@ -75,24 +72,27 @@ func (s *Service) GetTFStateLock(stateID string) (string, *domain.TFStateLock, e
 }
 
 // TryLockTFState attempts to acquire a lock; returns existing lock JSON if already locked
-func (s *Service) TryLockTFState(stateID string, lockJSON string) (alreadyLocked bool, existingLockJSON string, err error) {
+func (s *Service) TryLockTFState(orgID, stateID string, lockJSON string) (alreadyLocked bool, existingLockJSON string, err error) {
 	path := tfStateLockPath(stateID)
-	m, err := s.metadataByExactPath(path)
-	if err != nil {
-		if domain.IsNotFound(err) {
-			_, err := s.metadataRepo.Create(domain.CreateMetadataRequest{Path: path, Value: lockJSON})
-			return false, "", err
-		}
+	_, err = s.metadataRepo.Create(domain.CreateMetadataRequest{OrgID: orgID, Path: path, Value: lockJSON})
+	if err == nil {
+		return false, "", nil
+	}
+	if !domain.IsAlreadyExists(err) {
 		return false, "", err
 	}
-	// Already locked
+
+	m, err := s.metadataByExactPath(orgID, path)
+	if err != nil {
+		return false, "", err
+	}
 	return true, m.Value, nil
 }
 
 // UnlockTFState removes the lock if present
-func (s *Service) UnlockTFState(stateID string) (existed bool, lockJSON string, err error) {
+func (s *Service) UnlockTFState(orgID, stateID string) (existed bool, lockJSON string, err error) {
 	path := tfStateLockPath(stateID)
-	m, err := s.metadataByExactPath(path)
+	m, err := s.metadataByExactPath(orgID, path)
 	if err != nil {
 		if domain.IsNotFound(err) {
 			return false, "", nil

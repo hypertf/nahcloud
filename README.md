@@ -57,6 +57,8 @@ NahCloud implements the Terraform HTTP backend protocol:
 ## Authentication
 
 NahCloud uses API key authentication. Creating an organization returns the initial token once.
+All `/v1` routes except `POST /v1/orgs` require that token. The Terraform
+provider reads it from `NAH_TOKEN`.
 
 ### Create an org
 
@@ -95,6 +97,32 @@ curl https://nahcloud.com/v1/org \
 ```bash
 curl https://nahcloud.com/v1/projects \
   -H "Authorization: Bearer nah_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+### Use the Terraform HTTP backend
+
+The state backend is scoped to the same organization. Terraform's HTTP backend
+uses Basic authentication, with `nah` as the username and the API token as the
+password:
+
+```hcl
+terraform {
+  backend "http" {
+    address        = "https://nahcloud.com/v1/tfstate/my-state"
+    lock_address   = "https://nahcloud.com/v1/tfstate/my-state"
+    unlock_address = "https://nahcloud.com/v1/tfstate/my-state"
+    lock_method    = "LOCK"
+    unlock_method  = "UNLOCK"
+    username       = "nah"
+  }
+}
+```
+
+Keep the token out of configuration and state:
+
+```bash
+export TF_HTTP_PASSWORD="$NAH_TOKEN"
+terraform init
 ```
 
 ### Manage API keys
@@ -141,8 +169,11 @@ GET    /buildz
 # Organization and API keys
 POST   /v1/orgs
 GET    /v1/org
+PATCH  /v1/org
+POST   /v1/org/reset
 POST   /v1/api-keys
 GET    /v1/api-keys
+GET    /v1/api-keys/{key_id}
 DELETE /v1/api-keys/{key_id}
 
 # Projects
@@ -165,6 +196,16 @@ GET    /v1/projects/{project}/buckets
 GET    /v1/projects/{project}/buckets/{bucket}
 PATCH  /v1/projects/{project}/buckets/{bucket}
 DELETE /v1/projects/{project}/buckets/{bucket}
+
+# Stable-ID bucket and object routes (recommended for providers)
+GET    /v1/projects/{project}/buckets-by-id/{bucket_id}
+PATCH  /v1/projects/{project}/buckets-by-id/{bucket_id}
+DELETE /v1/projects/{project}/buckets-by-id/{bucket_id}
+POST   /v1/projects/{project}/buckets-by-id/{bucket_id}/objects
+GET    /v1/projects/{project}/buckets-by-id/{bucket_id}/objects
+GET    /v1/projects/{project}/buckets-by-id/{bucket_id}/objects/{id}
+PATCH  /v1/projects/{project}/buckets-by-id/{bucket_id}/objects/{id}
+DELETE /v1/projects/{project}/buckets-by-id/{bucket_id}/objects/{id}
 
 # Objects
 POST   /v1/projects/{project}/buckets/{bucket}/objects

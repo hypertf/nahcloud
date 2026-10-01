@@ -11,10 +11,15 @@ import (
 
 // TFStateGet handles GET /v1/tfstate/{state_id}
 func (h *Handler) TFStateGet(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	state, err := h.service.GetTFState(id)
+	state, err := h.service.GetTFState(org.ID, id)
 	if err != nil {
 		if domain.IsNotFound(err) {
 			w.WriteHeader(http.StatusNotFound)
@@ -30,13 +35,23 @@ func (h *Handler) TFStateGet(w http.ResponseWriter, r *http.Request) {
 
 // TFStatePost handles POST /v1/tfstate/{state_id}
 func (h *Handler) TFStatePost(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
 	vars := mux.Vars(r)
 	id := vars["id"]
 
 	// Enforce lock if present
-	if rawLock, lockInfo, err := h.service.GetTFStateLock(id); err == nil && lockInfo != nil {
+	rawLock, lockInfo, err := h.service.GetTFStateLock(org.ID, id)
+	if err != nil && !domain.IsNotFound(err) {
+		h.writeError(w, err)
+		return
+	}
+	if err == nil {
 		provided := r.URL.Query().Get("ID")
-		if provided == "" || provided != lockInfo.ID {
+		if lockInfo == nil || provided == "" || provided != lockInfo.ID {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusLocked) // 423
 			w.Write([]byte(rawLock))
@@ -49,7 +64,7 @@ func (h *Handler) TFStatePost(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, domain.InternalError("failed to read request body"))
 		return
 	}
-	if err := h.service.SetTFState(id, string(body)); err != nil {
+	if err := h.service.SetTFState(org.ID, id, string(body)); err != nil {
 		h.writeError(w, err)
 		return
 	}
@@ -58,13 +73,23 @@ func (h *Handler) TFStatePost(w http.ResponseWriter, r *http.Request) {
 
 // TFStateDelete handles DELETE /v1/tfstate/{state_id}
 func (h *Handler) TFStateDelete(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
 	vars := mux.Vars(r)
 	id := vars["id"]
 
 	// Enforce lock if present
-	if rawLock, lockInfo, err := h.service.GetTFStateLock(id); err == nil && lockInfo != nil {
+	rawLock, lockInfo, err := h.service.GetTFStateLock(org.ID, id)
+	if err != nil && !domain.IsNotFound(err) {
+		h.writeError(w, err)
+		return
+	}
+	if err == nil {
 		provided := r.URL.Query().Get("ID")
-		if provided == "" || provided != lockInfo.ID {
+		if lockInfo == nil || provided == "" || provided != lockInfo.ID {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusLocked) // 423
 			w.Write([]byte(rawLock))
@@ -72,7 +97,7 @@ func (h *Handler) TFStateDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := h.service.DeleteTFState(id); err != nil {
+	if err := h.service.DeleteTFState(org.ID, id); err != nil {
 		h.writeError(w, err)
 		return
 	}
@@ -81,6 +106,11 @@ func (h *Handler) TFStateDelete(w http.ResponseWriter, r *http.Request) {
 
 // TFStateLock handles LOCK /v1/tfstate/{state_id}
 func (h *Handler) TFStateLock(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -97,7 +127,7 @@ func (h *Handler) TFStateLock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Try to place the lock
-	locked, existing, err := h.service.TryLockTFState(id, string(body))
+	locked, existing, err := h.service.TryLockTFState(org.ID, id, string(body))
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -113,20 +143,45 @@ func (h *Handler) TFStateLock(w http.ResponseWriter, r *http.Request) {
 
 // TFStateUnlock handles UNLOCK /v1/tfstate/{state_id}
 func (h *Handler) TFStateUnlock(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
 	vars := mux.Vars(r)
 	id := vars["id"]
 
 	provided := r.URL.Query().Get("ID")
-	// Get current lock
-	rawLock, lockInfo, err := h.service.GetTFStateLock(id)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		// Not locked
-		w.WriteHeader(http.StatusOK)
+		h.writeError(w, domain.InvalidInputError("failed to read unlock payload", nil))
 		return
 	}
-	if lockInfo == nil || provided == lockInfo.ID {
-		// No parsed info or matching ID: unlock
-		if _, _, err := h.service.UnlockTFState(id); err != nil {
+	if len(body) > 0 {
+		var requested domain.TFStateLock
+		if err := json.Unmarshal(body, &requested); err != nil || requested.ID == "" {
+			h.writeError(w, domain.InvalidInputError("invalid unlock payload: missing or invalid ID", nil))
+			return
+		}
+		provided = requested.ID
+	}
+	if provided == "" {
+		h.writeError(w, domain.InvalidInputError("unlock payload must include an ID", nil))
+		return
+	}
+
+	// Get current lock
+	rawLock, lockInfo, err := h.service.GetTFStateLock(org.ID, id)
+	if err != nil {
+		if domain.IsNotFound(err) {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		h.writeError(w, err)
+		return
+	}
+	if lockInfo != nil && provided == lockInfo.ID {
+		if _, _, err := h.service.UnlockTFState(org.ID, id); err != nil {
 			h.writeError(w, err)
 			return
 		}

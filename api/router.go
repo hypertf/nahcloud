@@ -13,6 +13,8 @@ import (
 
 var startTime = time.Now()
 
+const maxRequestBodyBytes = 16 << 20
+
 // BuildInfo contains server build and runtime information
 type BuildInfo struct {
 	Version   string `json:"version"`
@@ -58,6 +60,9 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 
 	// Settings
 	webRouter.HandleFunc("/settings", webHandler.Settings).Methods("GET")
+	webRouter.HandleFunc("/settings/organization", webHandler.UpdateOrganization).Methods("PUT")
+	webRouter.HandleFunc("/settings/api-keys", webHandler.CreateAPIKey).Methods("POST")
+	webRouter.HandleFunc("/settings/api-keys/{id}", webHandler.DeleteAPIKey).Methods("DELETE")
 	webRouter.HandleFunc("/settings/reset", webHandler.ResetOrganization).Methods("POST")
 
 	// Projects list
@@ -82,9 +87,15 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	webRouter.HandleFunc("/projects/{project}/storage/buckets/new", webHandler.NewBucketForm).Methods("GET")
 	webRouter.HandleFunc("/projects/{project}/storage/buckets", webHandler.CreateBucket).Methods("POST")
 	webRouter.HandleFunc("/projects/{project}/storage/{bucket}", webHandler.ListBucketObjects).Methods("GET")
+	webRouter.HandleFunc("/projects/{project}/storage/{bucket}/edit", webHandler.EditBucketForm).Methods("GET")
+	webRouter.HandleFunc("/projects/{project}/storage/{bucket}", webHandler.UpdateBucket).Methods("PUT")
+	webRouter.HandleFunc("/projects/{project}/storage/{bucket}", webHandler.DeleteBucket).Methods("DELETE")
 	webRouter.HandleFunc("/projects/{project}/storage/{bucket}/objects/new", webHandler.NewObjectForm).Methods("GET")
 	webRouter.HandleFunc("/projects/{project}/storage/{bucket}/objects", webHandler.CreateObject).Methods("POST")
 	webRouter.HandleFunc("/projects/{project}/storage/{bucket}/objects/{objid}", webHandler.ViewObject).Methods("GET")
+	webRouter.HandleFunc("/projects/{project}/storage/{bucket}/objects/{objid}/edit", webHandler.EditObjectForm).Methods("GET")
+	webRouter.HandleFunc("/projects/{project}/storage/{bucket}/objects/{objid}", webHandler.UpdateObject).Methods("PUT")
+	webRouter.HandleFunc("/projects/{project}/storage/{bucket}/objects/{objid}", webHandler.DeleteObject).Methods("DELETE")
 
 	// Metadata (scoped to org - from context)
 	webRouter.HandleFunc("/metadata", webHandler.ListMetadata).Methods("GET")
@@ -100,16 +111,19 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	// Public routes (no auth required)
 	api.HandleFunc("/orgs", handler.CreateOrganization).Methods("POST")
 
-	// Authenticated API routes (require org token - auto-creates org if none)
+	// Authenticated API routes require an organization API token.
 	authAPI := api.PathPrefix("").Subrouter()
 	authAPI.Use(AuthMiddleware(svc))
 
 	// Organization routes (authenticated - returns current org)
 	authAPI.HandleFunc("/org", handler.GetOrganization).Methods("GET")
+	authAPI.HandleFunc("/org", handler.UpdateOrganization).Methods("PATCH")
+	authAPI.HandleFunc("/org/reset", handler.ResetOrganization).Methods("POST")
 
 	// API Key routes (scoped to current org)
 	authAPI.HandleFunc("/api-keys", handler.CreateAPIKey).Methods("POST")
 	authAPI.HandleFunc("/api-keys", handler.ListAPIKeys).Methods("GET")
+	authAPI.HandleFunc("/api-keys/{key_id}", handler.GetAPIKey).Methods("GET")
 	authAPI.HandleFunc("/api-keys/{key_id}", handler.DeleteAPIKey).Methods("DELETE")
 
 	// Project routes (scoped to current org)
@@ -132,6 +146,9 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	authAPI.HandleFunc("/projects/{project}/buckets/{bucket}", handler.GetBucket).Methods("GET")
 	authAPI.HandleFunc("/projects/{project}/buckets/{bucket}", handler.UpdateBucket).Methods("PATCH")
 	authAPI.HandleFunc("/projects/{project}/buckets/{bucket}", handler.DeleteBucket).Methods("DELETE")
+	authAPI.HandleFunc("/projects/{project}/buckets-by-id/{bucket_id}", handler.GetBucket).Methods("GET")
+	authAPI.HandleFunc("/projects/{project}/buckets-by-id/{bucket_id}", handler.UpdateBucket).Methods("PATCH")
+	authAPI.HandleFunc("/projects/{project}/buckets-by-id/{bucket_id}", handler.DeleteBucket).Methods("DELETE")
 
 	// Object routes (scoped to bucket)
 	authAPI.HandleFunc("/projects/{project}/buckets/{bucket}/objects", handler.CreateObject).Methods("POST")
@@ -139,6 +156,11 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	authAPI.HandleFunc("/projects/{project}/buckets/{bucket}/objects/{id}", handler.GetObject).Methods("GET")
 	authAPI.HandleFunc("/projects/{project}/buckets/{bucket}/objects/{id}", handler.UpdateObject).Methods("PATCH")
 	authAPI.HandleFunc("/projects/{project}/buckets/{bucket}/objects/{id}", handler.DeleteObject).Methods("DELETE")
+	authAPI.HandleFunc("/projects/{project}/buckets-by-id/{bucket_id}/objects", handler.CreateObject).Methods("POST")
+	authAPI.HandleFunc("/projects/{project}/buckets-by-id/{bucket_id}/objects", handler.ListObjects).Methods("GET")
+	authAPI.HandleFunc("/projects/{project}/buckets-by-id/{bucket_id}/objects/{id}", handler.GetObject).Methods("GET")
+	authAPI.HandleFunc("/projects/{project}/buckets-by-id/{bucket_id}/objects/{id}", handler.UpdateObject).Methods("PATCH")
+	authAPI.HandleFunc("/projects/{project}/buckets-by-id/{bucket_id}/objects/{id}", handler.DeleteObject).Methods("DELETE")
 
 	// Metadata routes (scoped to current org)
 	authAPI.HandleFunc("/metadata", handler.CreateMetadata).Methods("POST")
@@ -148,15 +170,16 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	authAPI.HandleFunc("/metadata/{id}", handler.UpdateMetadata).Methods("PATCH")
 	authAPI.HandleFunc("/metadata/{id}", handler.DeleteMetadata).Methods("DELETE")
 
-	// Terraform state routes (public for now - used by Terraform HTTP backend)
-	api.HandleFunc("/tfstate/{id}", handler.TFStateGet).Methods("GET")
-	api.HandleFunc("/tfstate/{id}", handler.TFStatePost).Methods("POST")
-	api.HandleFunc("/tfstate/{id}", handler.TFStateDelete).Methods("DELETE")
-	api.HandleFunc("/tfstate/{id}", handler.TFStateLock).Methods("LOCK")
-	api.HandleFunc("/tfstate/{id}", handler.TFStateUnlock).Methods("UNLOCK")
+	// Terraform HTTP backend routes (scoped to the authenticated organization)
+	authAPI.HandleFunc("/tfstate/{id}", handler.TFStateGet).Methods("GET")
+	authAPI.HandleFunc("/tfstate/{id}", handler.TFStatePost).Methods("POST")
+	authAPI.HandleFunc("/tfstate/{id}", handler.TFStateDelete).Methods("DELETE")
+	authAPI.HandleFunc("/tfstate/{id}", handler.TFStateLock).Methods("LOCK")
+	authAPI.HandleFunc("/tfstate/{id}", handler.TFStateUnlock).Methods("UNLOCK")
 
 	// Add CORS middleware for development
 	router.Use(corsMiddleware)
+	router.Use(limitRequestBodyMiddleware)
 
 	// Add logging middleware
 	router.Use(loggingMiddleware)
@@ -164,11 +187,18 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	return router
 }
 
+func limitRequestBodyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // corsMiddleware adds CORS headers
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, LOCK, UNLOCK, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token")
 
 		if r.Method == "OPTIONS" {

@@ -71,6 +71,55 @@ func (h *Handler) resolveProject(r *http.Request) (*domain.Organization, *domain
 	return org, project, nil
 }
 
+func (h *Handler) getProjectInstance(projectID, id string) (*domain.Instance, error) {
+	instance, err := h.service.GetInstance(id)
+	if err != nil {
+		return nil, err
+	}
+	if instance.ProjectID != projectID {
+		return nil, domain.NotFoundError("instance", id)
+	}
+	return instance, nil
+}
+
+func (h *Handler) getOrganizationMetadata(orgID, id string) (*domain.Metadata, error) {
+	metadata, err := h.service.GetMetadata(id)
+	if err != nil {
+		return nil, err
+	}
+	if metadata.OrgID != orgID {
+		return nil, domain.NotFoundError("metadata", id)
+	}
+	return metadata, nil
+}
+
+func (h *Handler) getBucketObject(bucketID, id string) (*domain.Object, error) {
+	object, err := h.service.GetObject(id)
+	if err != nil {
+		return nil, err
+	}
+	if object.BucketID != bucketID {
+		return nil, domain.NotFoundError("object", id)
+	}
+	return object, nil
+}
+
+func (h *Handler) resolveWebObject(r *http.Request) (*domain.Organization, *domain.Project, *domain.Bucket, *domain.Object, error) {
+	org, project, err := h.resolveProject(r)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	bucket, err := h.service.GetBucketByName(project.ID, mux.Vars(r)["bucket"])
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	object, err := h.getBucketObject(bucket.ID, mux.Vars(r)["objid"])
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return org, project, bucket, object, nil
+}
+
 func (h *Handler) resolveCurrentProject(w http.ResponseWriter, r *http.Request, org *domain.Organization) (*domain.Project, error) {
 	if org == nil {
 		return nil, nil
@@ -261,8 +310,7 @@ func (h *Handler) OpenPermalink(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-// Settings shows share and reset controls for the current organization.
-func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) renderSettings(w http.ResponseWriter, r *http.Request, newToken string) {
 	org, err := h.resolveOrg(r)
 	if err != nil {
 		h.renderError(w, err.Error(), http.StatusNotFound)
@@ -274,15 +322,85 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	apiKeys, err := h.service.ListAPIKeys(org.ID)
+	if err != nil {
+		h.renderError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/html")
-	tmpl := template.Must(template.New("settings").Parse(baseTemplate + settingsTemplate))
-	tmpl.Execute(w, map[string]interface{}{
+	data := map[string]interface{}{
 		"CSS":       template.CSS(static.CSS),
 		"Context":   ctx,
 		"Permalink": h.organizationPermalink(r, org.Slug),
 		"ResetDone": r.URL.Query().Get("reset") == "1",
-	})
+		"APIKeys":   apiKeys,
+		"NewToken":  newToken,
+	}
+	if isHTMXRequest(r) {
+		tmpl := template.Must(template.New("settings").Parse(settingsTemplate))
+		tmpl.ExecuteTemplate(w, "content", data)
+		return
+	}
+	tmpl := template.Must(template.New("settings").Parse(baseTemplate + settingsTemplate))
+	tmpl.Execute(w, data)
+}
+
+// Settings shows organization, API key, sharing, and reset controls.
+func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
+	h.renderSettings(w, r, "")
+}
+
+// UpdateOrganization updates the current organization's display name.
+func (h *Handler) UpdateOrganization(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.renderFormError(w, "Invalid form data")
+		return
+	}
+	name := r.FormValue("name")
+	if _, err := h.service.UpdateOrganization(org.ID, domain.UpdateOrganizationRequest{Name: &name}); err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	h.renderSettings(w, r, "")
+}
+
+// CreateAPIKey creates an organization API key and shows its token once.
+func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.renderFormError(w, "Invalid form data")
+		return
+	}
+	key, err := h.service.CreateAPIKey(org.ID, domain.CreateAPIKeyRequest{Name: r.FormValue("name")})
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	h.renderSettings(w, r, key.Token)
+}
+
+// DeleteAPIKey revokes an organization API key.
+func (h *Handler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	if err := h.service.DeleteAPIKey(org.ID, mux.Vars(r)["id"]); err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	h.renderSettings(w, r, "")
 }
 
 // ResetOrganization clears the current organization back to its initial blank state.
@@ -608,7 +726,7 @@ func (h *Handler) EditInstanceForm(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	instance, err := h.service.GetInstance(id)
+	instance, err := h.getProjectInstance(project.ID, id)
 	if err != nil {
 		h.renderFormError(w, err.Error())
 		return
@@ -636,6 +754,10 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	id := vars["id"]
+	if _, err := h.getProjectInstance(project.ID, id); err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
 
 	if err := r.ParseForm(); err != nil {
 		h.renderFormError(w, "Invalid form data")
@@ -665,8 +787,18 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 
 // DeleteInstance handles DELETE /web/org/{org}/projects/{project}/instances/{id}
 func (h *Handler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
+	_, project, err := h.resolveProject(r)
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+
 	vars := mux.Vars(r)
 	id := vars["id"]
+	if _, err := h.getProjectInstance(project.ID, id); err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
 
 	if err := h.service.DeleteInstance(id); err != nil {
 		h.renderFormError(w, err.Error())
@@ -772,7 +904,7 @@ func (h *Handler) EditMetadataForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metadata, err := h.service.GetMetadata(id)
+	metadata, err := h.getOrganizationMetadata(org.ID, id)
 	if err != nil {
 		h.renderFormError(w, err.Error())
 		return
@@ -785,7 +917,7 @@ func (h *Handler) EditMetadataForm(w http.ResponseWriter, r *http.Request) {
 
 // UpdateMetadata handles PUT /web/org/{org}/metadata/update
 func (h *Handler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
-	_, err := h.resolveOrg(r)
+	org, err := h.resolveOrg(r)
 	if err != nil {
 		h.renderFormError(w, err.Error())
 		return
@@ -798,6 +930,10 @@ func (h *Handler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
 
 	id := r.FormValue("id")
 	value := r.FormValue("value")
+	if _, err := h.getOrganizationMetadata(org.ID, id); err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
 
 	req := domain.UpdateMetadataRequest{Value: &value}
 
@@ -812,9 +948,19 @@ func (h *Handler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
 
 // DeleteMetadata handles DELETE /web/org/{org}/metadata/delete
 func (h *Handler) DeleteMetadata(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+
 	id := r.URL.Query().Get("id")
 	if id == "" {
 		h.renderFormError(w, "Metadata ID is required")
+		return
+	}
+	if _, err := h.getOrganizationMetadata(org.ID, id); err != nil {
+		h.renderFormError(w, err.Error())
 		return
 	}
 
@@ -845,12 +991,18 @@ func (h *Handler) renderStoragePage(w http.ResponseWriter, r *http.Request, org 
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	tmpl := template.Must(template.New("storage").Parse(baseTemplate + storageTemplate))
-	tmpl.Execute(w, map[string]interface{}{
+	data := map[string]interface{}{
 		"CSS":     template.CSS(static.CSS),
 		"Context": ctx,
 		"Buckets": buckets,
-	})
+	}
+	if isHTMXRequest(r) {
+		tmpl := template.Must(template.New("storage").Parse(storageTemplate))
+		tmpl.ExecuteTemplate(w, "content", data)
+		return
+	}
+	tmpl := template.Must(template.New("storage").Parse(baseTemplate + storageTemplate))
+	tmpl.Execute(w, data)
 }
 
 // ListStorage handles GET /projects/{project}/storage and pins that project as current.
@@ -918,6 +1070,65 @@ func (h *Handler) CreateBucket(w http.ResponseWriter, r *http.Request) {
 	h.ListStorage(w, r)
 }
 
+// EditBucketForm renders the bucket rename form.
+func (h *Handler) EditBucketForm(w http.ResponseWriter, r *http.Request) {
+	_, project, err := h.resolveProject(r)
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	bucket, err := h.service.GetBucketByName(project.ID, mux.Vars(r)["bucket"])
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
+	tmpl := template.Must(template.New("edit-bucket").Parse(editBucketFormTemplate))
+	tmpl.Execute(w, map[string]interface{}{"Project": project, "Bucket": bucket})
+}
+
+// UpdateBucket renames a bucket while preserving its stable ID and objects.
+func (h *Handler) UpdateBucket(w http.ResponseWriter, r *http.Request) {
+	org, project, err := h.resolveProject(r)
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	bucket, err := h.service.GetBucketByName(project.ID, mux.Vars(r)["bucket"])
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.renderFormError(w, "Invalid form data")
+		return
+	}
+	if _, err := h.service.UpdateBucket(bucket.ID, domain.UpdateBucketRequest{Name: r.FormValue("name")}); err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	h.renderStoragePage(w, r, org, project)
+}
+
+// DeleteBucket deletes a bucket and its objects.
+func (h *Handler) DeleteBucket(w http.ResponseWriter, r *http.Request) {
+	_, project, err := h.resolveProject(r)
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	bucket, err := h.service.GetBucketByName(project.ID, mux.Vars(r)["bucket"])
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	if err := h.service.DeleteBucket(bucket.ID); err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
 // ListBucketObjects handles GET /web/org/{org}/projects/{project}/storage/{bucket}
 func (h *Handler) ListBucketObjects(w http.ResponseWriter, r *http.Request) {
 	org, project, err := h.resolveProject(r)
@@ -951,14 +1162,20 @@ func (h *Handler) ListBucketObjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	tmpl := template.Must(template.New("bucket-objects").Parse(baseTemplate + bucketObjectsTemplate))
-	tmpl.Execute(w, map[string]interface{}{
+	data := map[string]interface{}{
 		"CSS":     template.CSS(static.CSS),
 		"Context": ctx,
 		"Bucket":  bucket,
 		"Objects": objects,
 		"Prefix":  prefix,
-	})
+	}
+	if isHTMXRequest(r) {
+		tmpl := template.Must(template.New("bucket-objects").Parse(bucketObjectsTemplate))
+		tmpl.ExecuteTemplate(w, "content", data)
+		return
+	}
+	tmpl := template.Must(template.New("bucket-objects").Parse(baseTemplate + bucketObjectsTemplate))
+	tmpl.Execute(w, data)
 }
 
 // NewObjectForm handles GET /web/org/{org}/projects/{project}/storage/{bucket}/objects/new
@@ -1051,7 +1268,7 @@ func (h *Handler) ViewObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	obj, err := h.service.GetObject(objID)
+	obj, err := h.getBucketObject(bucket.ID, objID)
 	if err != nil {
 		h.renderFormError(w, err.Error())
 		return
@@ -1069,4 +1286,58 @@ func (h *Handler) ViewObject(w http.ResponseWriter, r *http.Request) {
 		"DecodedContent": string(decoded),
 		"Size":           len(decoded),
 	})
+}
+
+// EditObjectForm renders an object editing form.
+func (h *Handler) EditObjectForm(w http.ResponseWriter, r *http.Request) {
+	org, project, bucket, obj, err := h.resolveWebObject(r)
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	decoded, err := base64.StdEncoding.DecodeString(obj.Content)
+	if err != nil {
+		h.renderFormError(w, "Object content is not valid base64")
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
+	tmpl := template.Must(template.New("edit-object").Parse(editObjectFormTemplate))
+	tmpl.Execute(w, map[string]interface{}{
+		"Org": org, "Project": project, "Bucket": bucket, "Object": obj, "DecodedContent": string(decoded),
+	})
+}
+
+// UpdateObject updates an object's path and content.
+func (h *Handler) UpdateObject(w http.ResponseWriter, r *http.Request) {
+	_, _, bucket, obj, err := h.resolveWebObject(r)
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.renderFormError(w, "Invalid form data")
+		return
+	}
+	path := r.FormValue("path")
+	content := base64.StdEncoding.EncodeToString([]byte(r.FormValue("content")))
+	if _, err := h.service.UpdateObject(obj.ID, domain.UpdateObjectRequest{Path: &path, Content: &content}); err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	w.Header().Set("HX-Redirect", "/projects/"+mux.Vars(r)["project"]+"/storage/"+bucket.Name)
+	w.WriteHeader(http.StatusOK)
+}
+
+// DeleteObject deletes an object from its bucket.
+func (h *Handler) DeleteObject(w http.ResponseWriter, r *http.Request) {
+	_, _, _, obj, err := h.resolveWebObject(r)
+	if err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	if err := h.service.DeleteObject(obj.ID); err != nil {
+		h.renderFormError(w, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }

@@ -1,0 +1,6 @@
+services:
+  nahcloud:
+    command: go run ./cmd/server --addr ":$PORT" --sqlite-dsn /tmp/nahcloud-dev.db
+    portal:
+      title: NahCloud
+      description: Local NahCloud API and web console

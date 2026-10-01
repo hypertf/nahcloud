@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -22,16 +23,29 @@ func NewDB(dsn string) (*DB, error) {
 	if dsn == "" {
 		dsn = defaultDSN
 	}
+	// Foreign-key enforcement is connection-local in SQLite. Put it in the
+	// driver DSN so replacement connections cannot silently disable cascades.
+	separator := "?"
+	if strings.Contains(dsn, "?") {
+		separator = "&"
+	}
+	dsn += separator + "_foreign_keys=on&_busy_timeout=5000"
 
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+	// SQLite settings such as foreign_keys are connection-local. A single
+	// shared connection also avoids lock churn for this intentionally small,
+	// low-latency test cloud.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	// Set pragmas
 	pragmas := []string{
 		"PRAGMA foreign_keys = ON",
 		"PRAGMA journal_mode = WAL",
+		"PRAGMA busy_timeout = 5000",
 	}
 
 	for _, pragma := range pragmas {
@@ -167,18 +181,6 @@ func (db *DB) runMigrations() error {
 
 // migrateToOrganizations migrates existing data to the new organization-based schema
 func (db *DB) migrateToOrganizations() error {
-	// Check if organizations table is empty
-	var orgCount int
-	err := db.QueryRow("SELECT COUNT(*) FROM organizations").Scan(&orgCount)
-	if err != nil {
-		return fmt.Errorf("failed to count organizations: %w", err)
-	}
-
-	// If there are already organizations, no migration needed
-	if orgCount > 0 {
-		return nil
-	}
-
 	// Check if there's data to migrate by looking at old projects table structure
 	// We need to check if old projects exist (ones without org_id)
 	var hasOldProjects bool
@@ -186,7 +188,6 @@ func (db *DB) migrateToOrganizations() error {
 	if err != nil {
 		return fmt.Errorf("failed to get projects table info: %w", err)
 	}
-	defer rows.Close()
 
 	hasOrgID := false
 	for rows.Next() {
@@ -201,6 +202,13 @@ func (db *DB) migrateToOrganizations() error {
 			hasOrgID = true
 			break
 		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("failed to inspect projects table: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("failed to close projects schema query: %w", err)
 	}
 
 	// Check if there are any existing projects
@@ -220,12 +228,19 @@ func (db *DB) migrateToOrganizations() error {
 
 	log.Println("Migrating to organization-based schema...")
 
-	// Create default organization
-	defaultOrgID := "default-org"
-	_, err = db.Exec(`INSERT INTO organizations (id, slug, name) VALUES (?, ?, ?)`,
-		defaultOrgID, "default-org", "Default Organization")
-	if err != nil {
-		return fmt.Errorf("failed to create default organization: %w", err)
+	// Reuse an existing organization when a partial migration already created
+	// one; otherwise create the legacy default organization.
+	var defaultOrgID string
+	err = db.QueryRow(`SELECT id FROM organizations ORDER BY created_at LIMIT 1`).Scan(&defaultOrgID)
+	if err == sql.ErrNoRows {
+		defaultOrgID = "default-org"
+		_, err = db.Exec(`INSERT INTO organizations (id, slug, name) VALUES (?, ?, ?)`,
+			defaultOrgID, "default-org", "Default Organization")
+		if err != nil {
+			return fmt.Errorf("failed to create default organization: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("failed to find migration organization: %w", err)
 	}
 
 	// Migrate projects: add org_id and slug columns if they don't exist
@@ -256,7 +271,6 @@ func (db *DB) migrateToOrganizations() error {
 	if err != nil {
 		return fmt.Errorf("failed to get buckets table info: %w", err)
 	}
-	defer rows2.Close()
 
 	for rows2.Next() {
 		var cid int
@@ -270,6 +284,13 @@ func (db *DB) migrateToOrganizations() error {
 			hasBucketProjectID = true
 			break
 		}
+	}
+	if err := rows2.Err(); err != nil {
+		rows2.Close()
+		return fmt.Errorf("failed to inspect buckets table: %w", err)
+	}
+	if err := rows2.Close(); err != nil {
+		return fmt.Errorf("failed to close buckets schema query: %w", err)
 	}
 
 	if !hasBucketProjectID {
@@ -307,7 +328,6 @@ func (db *DB) migrateToOrganizations() error {
 	if err != nil {
 		return fmt.Errorf("failed to get metadata table info: %w", err)
 	}
-	defer rows3.Close()
 
 	for rows3.Next() {
 		var cid int
@@ -321,6 +341,13 @@ func (db *DB) migrateToOrganizations() error {
 			hasMetadataOrgID = true
 			break
 		}
+	}
+	if err := rows3.Err(); err != nil {
+		rows3.Close()
+		return fmt.Errorf("failed to inspect metadata table: %w", err)
+	}
+	if err := rows3.Close(); err != nil {
+		return fmt.Errorf("failed to close metadata schema query: %w", err)
 	}
 
 	if !hasMetadataOrgID {

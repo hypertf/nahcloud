@@ -83,6 +83,37 @@ func (h *Handler) resolveProject(r *http.Request) (*domain.Project, error) {
 	return h.service.GetProjectBySlug(org.ID, projectSlug)
 }
 
+// resolveBucket resolves a project-scoped bucket by its human-readable name or
+// stable ID, depending on which route matched.
+func (h *Handler) resolveBucket(r *http.Request) (*domain.Project, *domain.Bucket, error) {
+	project, err := h.resolveProject(r)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	vars := mux.Vars(r)
+	if bucketID := vars["bucket_id"]; bucketID != "" {
+		bucket, err := h.service.GetBucket(bucketID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if bucket.ProjectID != project.ID {
+			return nil, nil, domain.NotFoundError("bucket", bucketID)
+		}
+		return project, bucket, nil
+	}
+
+	bucketName := vars["bucket"]
+	if bucketName == "" {
+		return nil, nil, domain.InvalidInputError("bucket name is required", nil)
+	}
+	bucket, err := h.service.GetBucketByName(project.ID, bucketName)
+	if err != nil {
+		return nil, nil, err
+	}
+	return project, bucket, nil
+}
+
 // decodeJSON decodes JSON from the request body into the given value
 func (h *Handler) decodeJSON(r *http.Request, v any) error {
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
@@ -112,8 +143,6 @@ func (h *Handler) CreateOrganization(w http.ResponseWriter, r *http.Request) {
 
 // GetOrganization handles GET /v1/orgs/{org}
 func (h *Handler) GetOrganization(w http.ResponseWriter, r *http.Request) {
-
-
 	org, err := h.resolveOrg(r)
 	if err != nil {
 		h.writeError(w, err)
@@ -123,7 +152,40 @@ func (h *Handler) GetOrganization(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, org)
 }
 
-// TODO: Add admin controls for ListOrganizations, UpdateOrganization, DeleteOrganization
+// UpdateOrganization handles PATCH /v1/org.
+func (h *Handler) UpdateOrganization(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+
+	var req domain.UpdateOrganizationRequest
+	if err := h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	updated, err := h.service.UpdateOrganization(org.ID, req)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, updated)
+}
+
+// ResetOrganization handles POST /v1/org/reset.
+func (h *Handler) ResetOrganization(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if err := h.service.ResetOrganization(org.ID); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
 // API Key handlers
 
@@ -165,6 +227,22 @@ func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeJSON(w, http.StatusOK, keys)
+}
+
+// GetAPIKey handles GET /v1/api-keys/{key_id}.
+func (h *Handler) GetAPIKey(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+
+	key, err := h.service.GetAPIKey(org.ID, mux.Vars(r)["key_id"])
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, key)
 }
 
 // DeleteAPIKey handles DELETE /v1/orgs/{org}/api-keys/{key_id}
@@ -214,7 +292,6 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 // GetProject handles GET /v1/orgs/{org}/projects/{project}
 func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 
-
 	project, err := h.resolveProject(r)
 	if err != nil {
 		h.writeError(w, err)
@@ -226,7 +303,6 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 
 // ListProjects handles GET /v1/orgs/{org}/projects
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
-
 
 	org, err := h.resolveOrg(r)
 	if err != nil {
@@ -250,7 +326,6 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 
 // UpdateProject handles PATCH /v1/orgs/{org}/projects/{project}
 func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
-
 
 	project, err := h.resolveProject(r)
 	if err != nil {
@@ -276,7 +351,6 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 // DeleteProject handles DELETE /v1/orgs/{org}/projects/{project}
 func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 
-
 	project, err := h.resolveProject(r)
 	if err != nil {
 		h.writeError(w, err)
@@ -295,7 +369,6 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 
 // CreateInstance handles POST /v1/orgs/{org}/projects/{project}/instances
 func (h *Handler) CreateInstance(w http.ResponseWriter, r *http.Request) {
-
 
 	project, err := h.resolveProject(r)
 	if err != nil {
@@ -324,7 +397,6 @@ func (h *Handler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 // GetInstance handles GET /v1/orgs/{org}/projects/{project}/instances/{id}
 func (h *Handler) GetInstance(w http.ResponseWriter, r *http.Request) {
 
-
 	project, err := h.resolveProject(r)
 	if err != nil {
 		h.writeError(w, err)
@@ -352,7 +424,6 @@ func (h *Handler) GetInstance(w http.ResponseWriter, r *http.Request) {
 // ListInstances handles GET /v1/orgs/{org}/projects/{project}/instances
 func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
 
-
 	project, err := h.resolveProject(r)
 	if err != nil {
 		h.writeError(w, err)
@@ -377,7 +448,6 @@ func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
 
 // UpdateInstance handles PATCH /v1/orgs/{org}/projects/{project}/instances/{id}
 func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
-
 
 	project, err := h.resolveProject(r)
 	if err != nil {
@@ -417,7 +487,6 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 // DeleteInstance handles DELETE /v1/orgs/{org}/projects/{project}/instances/{id}
 func (h *Handler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
 
-
 	project, err := h.resolveProject(r)
 	if err != nil {
 		h.writeError(w, err)
@@ -451,7 +520,6 @@ func (h *Handler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
 // CreateMetadata handles POST /v1/orgs/{org}/metadata
 func (h *Handler) CreateMetadata(w http.ResponseWriter, r *http.Request) {
 
-
 	org, err := h.resolveOrg(r)
 	if err != nil {
 		h.writeError(w, err)
@@ -478,7 +546,6 @@ func (h *Handler) CreateMetadata(w http.ResponseWriter, r *http.Request) {
 
 // GetMetadata handles GET /v1/orgs/{org}/metadata/{id}
 func (h *Handler) GetMetadata(w http.ResponseWriter, r *http.Request) {
-
 
 	org, err := h.resolveOrg(r)
 	if err != nil {
@@ -507,7 +574,6 @@ func (h *Handler) GetMetadata(w http.ResponseWriter, r *http.Request) {
 // ListMetadata handles GET /v1/orgs/{org}/metadata
 func (h *Handler) ListMetadata(w http.ResponseWriter, r *http.Request) {
 
-
 	org, err := h.resolveOrg(r)
 	if err != nil {
 		h.writeError(w, err)
@@ -530,7 +596,6 @@ func (h *Handler) ListMetadata(w http.ResponseWriter, r *http.Request) {
 
 // UpdateMetadata handles PATCH /v1/orgs/{org}/metadata/{id}
 func (h *Handler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
-
 
 	org, err := h.resolveOrg(r)
 	if err != nil {
@@ -570,7 +635,6 @@ func (h *Handler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
 // DeleteMetadata handles DELETE /v1/orgs/{org}/metadata/{id}
 func (h *Handler) DeleteMetadata(w http.ResponseWriter, r *http.Request) {
 
-
 	org, err := h.resolveOrg(r)
 	if err != nil {
 		h.writeError(w, err)
@@ -604,7 +668,6 @@ func (h *Handler) DeleteMetadata(w http.ResponseWriter, r *http.Request) {
 // CreateBucket handles POST /v1/orgs/{org}/projects/{project}/buckets
 func (h *Handler) CreateBucket(w http.ResponseWriter, r *http.Request) {
 
-
 	project, err := h.resolveProject(r)
 	if err != nil {
 		h.writeError(w, err)
@@ -628,18 +691,7 @@ func (h *Handler) CreateBucket(w http.ResponseWriter, r *http.Request) {
 
 // GetBucket handles GET /v1/orgs/{org}/projects/{project}/buckets/{bucket}
 func (h *Handler) GetBucket(w http.ResponseWriter, r *http.Request) {
-
-
-	project, err := h.resolveProject(r)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
-
-	vars := mux.Vars(r)
-	bucketName := vars["bucket"]
-
-	bucket, err := h.service.GetBucketByName(project.ID, bucketName)
+	_, bucket, err := h.resolveBucket(r)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -650,7 +702,6 @@ func (h *Handler) GetBucket(w http.ResponseWriter, r *http.Request) {
 
 // ListBuckets handles GET /v1/orgs/{org}/projects/{project}/buckets
 func (h *Handler) ListBuckets(w http.ResponseWriter, r *http.Request) {
-
 
 	project, err := h.resolveProject(r)
 	if err != nil {
@@ -674,18 +725,7 @@ func (h *Handler) ListBuckets(w http.ResponseWriter, r *http.Request) {
 
 // UpdateBucket handles PATCH /v1/orgs/{org}/projects/{project}/buckets/{bucket}
 func (h *Handler) UpdateBucket(w http.ResponseWriter, r *http.Request) {
-
-
-	project, err := h.resolveProject(r)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
-
-	vars := mux.Vars(r)
-	bucketName := vars["bucket"]
-
-	bucket, err := h.service.GetBucketByName(project.ID, bucketName)
+	_, bucket, err := h.resolveBucket(r)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -708,18 +748,7 @@ func (h *Handler) UpdateBucket(w http.ResponseWriter, r *http.Request) {
 
 // DeleteBucket handles DELETE /v1/orgs/{org}/projects/{project}/buckets/{bucket}
 func (h *Handler) DeleteBucket(w http.ResponseWriter, r *http.Request) {
-
-
-	project, err := h.resolveProject(r)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
-
-	vars := mux.Vars(r)
-	bucketName := vars["bucket"]
-
-	bucket, err := h.service.GetBucketByName(project.ID, bucketName)
+	_, bucket, err := h.resolveBucket(r)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -737,18 +766,7 @@ func (h *Handler) DeleteBucket(w http.ResponseWriter, r *http.Request) {
 
 // CreateObject handles POST /v1/orgs/{org}/projects/{project}/buckets/{bucket}/objects
 func (h *Handler) CreateObject(w http.ResponseWriter, r *http.Request) {
-
-
-	project, err := h.resolveProject(r)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
-
-	vars := mux.Vars(r)
-	bucketName := vars["bucket"]
-
-	bucket, err := h.service.GetBucketByName(project.ID, bucketName)
+	_, bucket, err := h.resolveBucket(r)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -774,23 +792,14 @@ func (h *Handler) CreateObject(w http.ResponseWriter, r *http.Request) {
 
 // GetObject handles GET /v1/orgs/{org}/projects/{project}/buckets/{bucket}/objects/{id}
 func (h *Handler) GetObject(w http.ResponseWriter, r *http.Request) {
-
-
-	project, err := h.resolveProject(r)
+	_, bucket, err := h.resolveBucket(r)
 	if err != nil {
 		h.writeError(w, err)
 		return
 	}
 
 	vars := mux.Vars(r)
-	bucketName := vars["bucket"]
 	id := vars["id"]
-
-	bucket, err := h.service.GetBucketByName(project.ID, bucketName)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
 
 	obj, err := h.service.GetObject(id)
 	if err != nil {
@@ -809,18 +818,7 @@ func (h *Handler) GetObject(w http.ResponseWriter, r *http.Request) {
 
 // ListObjects handles GET /v1/orgs/{org}/projects/{project}/buckets/{bucket}/objects
 func (h *Handler) ListObjects(w http.ResponseWriter, r *http.Request) {
-
-
-	project, err := h.resolveProject(r)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
-
-	vars := mux.Vars(r)
-	bucketName := vars["bucket"]
-
-	bucket, err := h.service.GetBucketByName(project.ID, bucketName)
+	_, bucket, err := h.resolveBucket(r)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -842,23 +840,14 @@ func (h *Handler) ListObjects(w http.ResponseWriter, r *http.Request) {
 
 // UpdateObject handles PATCH /v1/orgs/{org}/projects/{project}/buckets/{bucket}/objects/{id}
 func (h *Handler) UpdateObject(w http.ResponseWriter, r *http.Request) {
-
-
-	project, err := h.resolveProject(r)
+	_, bucket, err := h.resolveBucket(r)
 	if err != nil {
 		h.writeError(w, err)
 		return
 	}
 
 	vars := mux.Vars(r)
-	bucketName := vars["bucket"]
 	id := vars["id"]
-
-	bucket, err := h.service.GetBucketByName(project.ID, bucketName)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
 
 	// Verify object belongs to bucket
 	obj, err := h.service.GetObject(id)
@@ -888,23 +877,14 @@ func (h *Handler) UpdateObject(w http.ResponseWriter, r *http.Request) {
 
 // DeleteObject handles DELETE /v1/orgs/{org}/projects/{project}/buckets/{bucket}/objects/{id}
 func (h *Handler) DeleteObject(w http.ResponseWriter, r *http.Request) {
-
-
-	project, err := h.resolveProject(r)
+	_, bucket, err := h.resolveBucket(r)
 	if err != nil {
 		h.writeError(w, err)
 		return
 	}
 
 	vars := mux.Vars(r)
-	bucketName := vars["bucket"]
 	id := vars["id"]
-
-	bucket, err := h.service.GetBucketByName(project.ID, bucketName)
-	if err != nil {
-		h.writeError(w, err)
-		return
-	}
 
 	// Verify object belongs to bucket
 	obj, err := h.service.GetObject(id)

@@ -218,16 +218,17 @@ const settingsTemplate = `{{define "content"}}
         <div class="space-y-6">
             <div class="rounded-[28px] border border-black/5 bg-white/85 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.06)] backdrop-blur">
                 <h3 class="text-lg font-semibold">Organization</h3>
-                <div class="mt-5 grid gap-4 sm:grid-cols-2">
+                <form class="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end" hx-put="/settings/organization" hx-target="#content">
                     <div>
-                        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Name</p>
-                        <p class="mt-2 text-sm font-medium text-slate-900">{{.Context.Org.Name}}</p>
+                        <label class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500" for="org-name">Name</label>
+                        <input id="org-name" name="name" required value="{{.Context.Org.Name}}" class="mt-2 w-full rounded-2xl border border-black/5 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:border-[#2878B5] focus:outline-none focus:ring-2 focus:ring-[#2878B5]/10">
                     </div>
                     <div>
                         <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Slug</p>
-                        <p class="mt-2 font-mono text-sm text-slate-700">{{.Context.Org.Slug}}</p>
+                        <p class="mt-2 rounded-2xl bg-slate-50 px-4 py-3 font-mono text-sm text-slate-700">{{.Context.Org.Slug}}</p>
                     </div>
-                </div>
+                    <button class="btn btn-secondary" type="submit">Save</button>
+                </form>
             </div>
 
             <div class="rounded-[28px] border border-black/5 bg-white/85 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.06)] backdrop-blur">
@@ -235,7 +236,7 @@ const settingsTemplate = `{{define "content"}}
                 <p class="mt-2 text-sm text-slate-600">Anyone with this link will enter the same org and get their own browser session for it.</p>
                 <div class="mt-4 flex flex-col gap-3 sm:flex-row">
                     <input id="org-permalink" type="text" readonly value="{{.Permalink}}" class="w-full rounded-2xl border border-black/5 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:outline-none">
-                    <button type="button" class="btn btn-secondary" onclick="copyPermalink()">Copy Link</button>
+                    <button type="button" class="btn btn-secondary whitespace-nowrap" onclick="copyValue('org-permalink')">Copy Link</button>
                 </div>
             </div>
         </div>
@@ -253,11 +254,51 @@ const settingsTemplate = `{{define "content"}}
             </div>
         </div>
     </div>
+
+    <div class="rounded-[28px] border border-black/5 bg-white/85 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.06)] backdrop-blur">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+                <h3 class="text-lg font-semibold">API Keys</h3>
+                <p class="mt-2 text-sm text-slate-600">Use a key with the Terraform provider or HTTP state backend.</p>
+            </div>
+            <form class="flex gap-2" hx-post="/settings/api-keys" hx-target="#content">
+                <input name="name" required placeholder="terraform-local" class="rounded-2xl border border-black/5 bg-slate-50 px-4 py-2.5 text-sm focus:border-[#2878B5] focus:outline-none focus:ring-2 focus:ring-[#2878B5]/10">
+                <button class="btn btn-primary whitespace-nowrap" type="submit">Create Key</button>
+            </form>
+        </div>
+
+        {{if .NewToken}}
+        <div class="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p class="text-sm font-semibold text-amber-900">Copy this token now. It will not be shown again.</p>
+            <div class="mt-3 flex gap-2">
+                <input id="new-api-token" readonly value="{{.NewToken}}" class="min-w-0 flex-1 rounded-xl bg-white px-4 py-3 font-mono text-sm text-slate-800">
+                <button type="button" class="btn btn-secondary whitespace-nowrap" onclick="copyValue('new-api-token')">Copy Token</button>
+            </div>
+        </div>
+        {{end}}
+
+        <div class="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+            <table class="w-full">
+                <thead><tr class="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500"><th class="px-4 py-3">Name</th><th class="px-4 py-3">Last used</th><th class="px-4 py-3 text-right">Action</th></tr></thead>
+                <tbody>
+                    {{range .APIKeys}}
+                    <tr class="border-t border-slate-100">
+                        <td class="px-4 py-3 text-sm font-medium text-slate-900">{{.Name}}</td>
+                        <td class="px-4 py-3 text-sm text-slate-500">{{if .LastUsedAt}}{{.LastUsedAt.Format "2006-01-02 15:04"}}{{else}}Never{{end}}</td>
+                        <td class="px-4 py-3 text-right"><button class="btn btn-danger btn-sm" hx-delete="/settings/api-keys/{{.ID}}" hx-target="#content" hx-confirm="Revoke this API key? Any Terraform runs using it will stop working.">Revoke</button></td>
+                    </tr>
+                    {{else}}
+                    <tr><td colspan="3" class="px-4 py-6 text-center text-sm text-slate-500">No API keys yet.</td></tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 <script>
-function copyPermalink() {
-    var input = document.getElementById('org-permalink');
+function copyValue(id) {
+    var input = document.getElementById(id);
     if (!input) return;
     input.focus();
     input.select();
@@ -647,6 +688,7 @@ const storageTemplate = `{{define "content"}}
                 <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">Bucket Name</th>
                 <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">Created At</th>
                 <th class="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">Updated At</th>
+                <th class="text-right px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -662,10 +704,16 @@ const storageTemplate = `{{define "content"}}
                 </td>
                 <td class="px-6 py-4 border-b border-slate-100 text-slate-500">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
                 <td class="px-6 py-4 border-b border-slate-100 text-slate-500">{{.UpdatedAt.Format "2006-01-02 15:04:05"}}</td>
+                <td class="px-6 py-4 border-b border-slate-100 text-right">
+                    <div class="flex justify-end gap-2">
+                        <button class="btn btn-secondary btn-sm" hx-get="/projects/{{$.Context.Project.Slug}}/storage/{{.Name}}/edit" hx-target="#modal-content">Rename</button>
+                        <button class="btn btn-danger btn-sm" hx-delete="/projects/{{$.Context.Project.Slug}}/storage/{{.Name}}" hx-target="closest tr" hx-swap="outerHTML" hx-confirm="Delete this bucket and every object in it?">Delete</button>
+                    </div>
+                </td>
             </tr>
             {{else}}
             <tr>
-                <td colspan="3" class="px-6 py-8 text-center text-slate-500">No buckets yet for this project.</td>
+                <td colspan="4" class="px-6 py-8 text-center text-slate-500">No buckets yet for this project.</td>
             </tr>
             {{end}}
         </tbody>
@@ -694,6 +742,24 @@ const newBucketFormTemplate = `
     <div class="px-6 py-4 border-t border-slate-200 flex justify-end gap-3 bg-slate-50">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal').style.display='none'">Cancel</button>
         <button type="submit" class="btn btn-primary">Create Bucket</button>
+    </div>
+</form>`
+
+const editBucketFormTemplate = `
+<div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
+    <h3 class="text-lg font-semibold">Rename Bucket</h3>
+    <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100" onclick="document.getElementById('modal').style.display='none'">&times;</button>
+</div>
+<form hx-put="/projects/{{.Project.Slug}}/storage/{{.Bucket.Name}}" hx-target="#content" hx-on::after-request="if(event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) document.getElementById('modal').style.display='none'">
+    <div class="p-6">
+        <div id="form-error" class="mb-4"></div>
+        <label class="block text-sm font-medium mb-1.5" for="bucket-name">Bucket Name</label>
+        <input id="bucket-name" name="name" value="{{.Bucket.Name}}" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10">
+        <p class="mt-2 text-xs text-slate-500">The stable bucket ID and every stored object are preserved.</p>
+    </div>
+    <div class="px-6 py-4 border-t border-slate-200 flex justify-end gap-3 bg-slate-50">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-primary">Rename Bucket</button>
     </div>
 </form>`
 
@@ -743,7 +809,11 @@ const bucketObjectsTemplate = `{{define "content"}}
                 </td>
                 <td class="px-6 py-4 border-b border-slate-100 text-slate-500">{{.UpdatedAt.Format "2006-01-02 15:04:05"}}</td>
                 <td class="px-6 py-4 border-b border-slate-100">
-                    <button class="btn btn-secondary btn-sm" hx-get="/projects/{{$.Context.Project.Slug}}/storage/{{$.Bucket.Name}}/objects/{{.ID}}" hx-target="#modal-content">View</button>
+                    <div class="flex gap-2">
+                        <button class="btn btn-secondary btn-sm" hx-get="/projects/{{$.Context.Project.Slug}}/storage/{{$.Bucket.Name}}/objects/{{.ID}}" hx-target="#modal-content">View</button>
+                        <button class="btn btn-secondary btn-sm" hx-get="/projects/{{$.Context.Project.Slug}}/storage/{{$.Bucket.Name}}/objects/{{.ID}}/edit" hx-target="#modal-content">Edit</button>
+                        <button class="btn btn-danger btn-sm" hx-delete="/projects/{{$.Context.Project.Slug}}/storage/{{$.Bucket.Name}}/objects/{{.ID}}" hx-target="closest tr" hx-swap="outerHTML" hx-confirm="Delete this object?">Delete</button>
+                    </div>
                 </td>
             </tr>
             {{else}}
@@ -800,3 +870,26 @@ const viewObjectTemplate = `
 <div class="px-6 py-4 border-t border-slate-200 flex justify-end bg-slate-50">
     <button class="btn btn-secondary" onclick="document.getElementById('modal').style.display='none'">Close</button>
 </div>`
+
+const editObjectFormTemplate = `
+<div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
+    <h3 class="text-lg font-semibold">Edit Object</h3>
+    <button class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100" onclick="document.getElementById('modal').style.display='none'">&times;</button>
+</div>
+<form hx-put="/projects/{{.Project.Slug}}/storage/{{.Bucket.Name}}/objects/{{.Object.ID}}" hx-target="#form-error">
+    <div class="p-6 space-y-5">
+        <div id="form-error"></div>
+        <div>
+            <label class="block text-sm font-medium mb-1.5" for="object-path">Object Path</label>
+            <input id="object-path" name="path" value="{{.Object.Path}}" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10">
+        </div>
+        <div>
+            <label class="block text-sm font-medium mb-1.5" for="object-content">Content</label>
+            <textarea id="object-content" name="content" rows="10" required class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg font-mono focus:outline-none focus:border-[#2878B5] focus:ring-2 focus:ring-[#2878B5]/10">{{.DecodedContent}}</textarea>
+        </div>
+    </div>
+    <div class="px-6 py-4 border-t border-slate-200 flex justify-end gap-3 bg-slate-50">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Object</button>
+    </div>
+</form>`
