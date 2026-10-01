@@ -7,3 +7,6 @@ tmp
 
 # Web dependencies (output.css is committed for go build without npm)
 web/node_modules
+
+# Amp orb runtime state
+.amp/portals/
