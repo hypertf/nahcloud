@@ -44,3 +44,34 @@ Other behavior:
 - Settings page for permalink sharing and org reset
 - Validation that respects API constraints
 - Responsive layout for routine browser-based operations
+
+## Frozen cloud graph contract
+
+The `/cloud` console depends on the narrow `GraphConsole` interface in `cloud_graph.go`,
+not directly on graph persistence or API handlers. `GraphScope` always carries the
+authenticated organization ID and the project ID resolved from the route slug. The current
+`main` branch has no corrected graph service contract, so the production adapter returns an
+explicit unavailable state. It never creates process-local placeholder resources.
+
+The adapter and templates follow these frozen semantics:
+
+- **Networks** are project-scoped and own subnets. Network deletion is restricted while
+  subnets exist. Subnet deletion is restricted while instances or load balancers reference it.
+- **Disks** are project-scoped and have at most one attachment edge to a same-project,
+  same-region instance. Disk deletion is restricted while attached; deleting an attachment
+  removes only the edge.
+- **Policies** are organization-scoped. Bindings connect organization or API-key principals
+  to targets in the same organization. Deleting a policy cascades its bindings.
+- **Load balancers** are project- and subnet-scoped and own backend edges. Backend health is
+  computed as `enabled && instance.status == running`; no active probe is implied. Deleting a
+  load balancer cascades its backends.
+- **Instances** expose subnet, attached disks, and load-balancer memberships. Deleting an
+  instance cascades attachment edges, backend edges, and bindings targeting it; disks survive.
+- Every persisted node and edge has a stable, copyable opaque ID. Cross-tenant or wrong-parent
+  references return not found. Empty and adapter-error states never invent data.
+- **Fault Lab is read-only documentation/status.** Fault mutations remain API-key-only while
+  organization permalinks grant writable browser sessions.
+
+After PR #4's corrected service methods and domain types land, implement only
+`serviceGraphConsole` mapping. The handlers and templates should continue consuming these
+web view types so backend route or storage details do not leak into the console.

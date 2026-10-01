@@ -1,8 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    "./handlers.go",
-    "./templates.go",
+    "./*.go",
   ],
   theme: {
     extend: {

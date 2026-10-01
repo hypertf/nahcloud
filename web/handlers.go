@@ -23,11 +23,12 @@ const (
 // Handler handles web console requests
 type Handler struct {
 	service *service.Service
+	graph   GraphConsole
 }
 
 // NewHandler creates a new web handler
 func NewHandler(svc *service.Service) *Handler {
-	return &Handler{service: svc}
+	return &Handler{service: svc, graph: newServiceGraphConsole(svc)}
 }
 
 // PageContext contains common data for all pages
@@ -253,6 +254,8 @@ func (h *Handler) currentSectionRedirect(section string) string {
 		return "/instances"
 	case "storage":
 		return "/storage"
+	case "cloud":
+		return "/cloud"
 	case "metadata":
 		return "/metadata"
 	case "projects":

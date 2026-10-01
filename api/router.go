@@ -57,6 +57,7 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	webRouter.HandleFunc("/", webHandler.ListCurrentInstances).Methods("GET")
 	webRouter.HandleFunc("/instances", webHandler.ListCurrentInstances).Methods("GET")
 	webRouter.HandleFunc("/storage", webHandler.ListCurrentStorage).Methods("GET")
+	webRouter.HandleFunc("/cloud", webHandler.ListCurrentCloud).Methods("GET")
 
 	// Settings
 	webRouter.HandleFunc("/settings", webHandler.Settings).Methods("GET")
@@ -81,6 +82,12 @@ func SetupRouter(handler *Handler, svc *service.Service, version string) *mux.Ro
 	webRouter.HandleFunc("/projects/{project}/instances/{id}/edit", webHandler.EditInstanceForm).Methods("GET")
 	webRouter.HandleFunc("/projects/{project}/instances/{id}", webHandler.UpdateInstance).Methods("PUT")
 	webRouter.HandleFunc("/projects/{project}/instances/{id}", webHandler.DeleteInstance).Methods("DELETE")
+
+	// Proposed cloud graph console (project-scoped preview contract)
+	webRouter.HandleFunc("/projects/{project}/cloud", webHandler.ListCloud).Methods("GET")
+	webRouter.HandleFunc("/projects/{project}/cloud/new", webHandler.NewGraphResourceForm).Methods("GET")
+	webRouter.HandleFunc("/projects/{project}/cloud/resources", webHandler.CreateGraphResource).Methods("POST")
+	webRouter.HandleFunc("/projects/{project}/cloud/{kind}/{id}", webHandler.DeleteGraphResource).Methods("DELETE")
 
 	// Storage (scoped to project)
 	webRouter.HandleFunc("/projects/{project}/storage", webHandler.ListStorage).Methods("GET")
