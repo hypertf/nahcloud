@@ -5,6 +5,7 @@ package web
 const errorTemplate = `<!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
     <title>Error - NahCloud</title>
     <link rel="icon" type="image/png" href="/static/logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,6 +25,7 @@ const errorTemplate = `<!DOCTYPE html>
 const baseTemplate = `<!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
     <title>NahCloud</title>
     <link rel="icon" type="image/png" href="/static/logo.png">
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
@@ -148,6 +150,12 @@ const baseTemplate = `<!DOCTYPE html>
                     </svg>
                     Storage
                 </a>
+                <a href="/cloud" class="sidebar-link {{if eq .Context.Section "cloud"}}active{{end}}">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 6a2 2 0 11-4 0 2 2 0 014 0zm12 0a2 2 0 11-4 0 2 2 0 014 0zM8 18a2 2 0 11-4 0 2 2 0 014 0zm12 0a2 2 0 11-4 0 2 2 0 014 0zM7.5 7.5l9 9m0-9l-9 9"></path>
+                    </svg>
+                    Cloud Graph
+                </a>
                 {{end}}
                 <a href="/projects" class="sidebar-link {{if eq .Context.Section "projects"}}active{{end}}">
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -194,6 +202,9 @@ const baseTemplate = `<!DOCTYPE html>
         document.body.addEventListener('htmx:afterSwap', function(e) {
             if (e.target.id === 'modal-content') {
                 document.getElementById('modal').style.display = 'block';
+            }
+            if (e.target.id === 'content') {
+                document.getElementById('modal').style.display = 'none';
             }
         });
     </script>
