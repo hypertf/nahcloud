@@ -7,35 +7,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type stubFaultRepository struct{}
+func faultString(value string) *string { return &value }
+func faultInt(value int) *int          { return &value }
+func faultUint(value uint64) *uint64   { return &value }
 
-func (stubFaultRepository) Put(_ string, req domain.PutFaultScenarioRequest) (*domain.FaultScenario, error) {
-	return &domain.FaultScenario{Rules: req.Rules}, nil
-}
-func (stubFaultRepository) Get(string) (*domain.FaultScenario, error)   { return nil, nil }
-func (stubFaultRepository) Reset(string) (*domain.FaultScenario, error) { return nil, nil }
-func (stubFaultRepository) Evaluate(string, string, string) (*domain.FaultDecision, error) {
-	return nil, nil
-}
-
-func TestFaultValidationSafetyBoundaries(t *testing.T) {
-	svc := NewFaultService(stubFaultRepository{})
-	valid := domain.FaultRule{ID: "safe", Operation: "get", Route: "/v1/projects/*", Status: 400, LatencyMS: domain.MaxFaultLatencyMS, EveryN: domain.MaxFaultEveryN}
-	scenario, err := svc.Put("org", domain.PutFaultScenarioRequest{Enabled: true, Rules: []domain.FaultRule{valid}})
-	require.NoError(t, err)
-	require.Equal(t, "GET", scenario.Rules[0].Operation)
-
-	cases := []domain.FaultRule{
-		{ID: "status-low", Operation: "GET", Route: "/v1/org", Status: 399, EveryN: 1},
-		{ID: "status-high", Operation: "GET", Route: "/v1/org", Status: 600, EveryN: 1},
-		{ID: "latency", Operation: "GET", Route: "/v1/org", LatencyMS: domain.MaxFaultLatencyMS + 1, EveryN: 1},
-		{ID: "frequency", Operation: "GET", Route: "/v1/org", Status: 500, EveryN: 0},
-		{ID: "management", Operation: "GET", Route: "/v1/faults/scenario", Status: 500, EveryN: 1},
-		{ID: "empty", Operation: "GET", Route: "/v1/org", EveryN: 1},
+func TestFaultRuleValidationBoundaries(t *testing.T) {
+	valid := domain.FaultRule{Operation: faultString("instances.create"), EveryNth: 1, FailurePercent: 100, StatusCode: faultInt(400), DelayMS: domain.MaxFaultDelayMS, Priority: 1000}
+	require.NoError(t, validateFaultRule(&valid))
+	for status := range domain.AllowedFaultStatusCodes {
+		valid.StatusCode = faultInt(status)
+		require.NoError(t, validateFaultRule(&valid))
 	}
-	for _, rule := range cases {
-		t.Run(rule.ID, func(t *testing.T) {
-			_, err := svc.Put("org", domain.PutFaultScenarioRequest{Rules: []domain.FaultRule{rule}})
+
+	cases := map[string]domain.FaultRule{
+		"matcher required":  {EveryNth: 1, FailurePercent: 100, StatusCode: faultInt(500)},
+		"effect required":   {Method: faultString("GET"), EveryNth: 1, FailurePercent: 100},
+		"priority low":      {Method: faultString("GET"), Priority: -1, EveryNth: 1, FailurePercent: 100, StatusCode: faultInt(500)},
+		"priority high":     {Method: faultString("GET"), Priority: 1001, EveryNth: 1, FailurePercent: 100, StatusCode: faultInt(500)},
+		"every nth":         {Method: faultString("GET"), EveryNth: 0, FailurePercent: 100, StatusCode: faultInt(500)},
+		"percent low":       {Method: faultString("GET"), EveryNth: 1, FailurePercent: 0, StatusCode: faultInt(500)},
+		"percent high":      {Method: faultString("GET"), EveryNth: 1, FailurePercent: 101, StatusCode: faultInt(500)},
+		"max triggers":      {Method: faultString("GET"), EveryNth: 1, FailurePercent: 100, MaxTriggers: faultUint(0), StatusCode: faultInt(500)},
+		"status allowlist":  {Method: faultString("GET"), EveryNth: 1, FailurePercent: 100, StatusCode: faultInt(501)},
+		"delay low":         {Method: faultString("GET"), EveryNth: 1, FailurePercent: 100, DelayMS: -1},
+		"delay high":        {Method: faultString("GET"), EveryNth: 1, FailurePercent: 100, DelayMS: domain.MaxFaultDelayMS + 1},
+		"route must be API": {Route: faultString("/buildz"), EveryNth: 1, FailurePercent: 100, StatusCode: faultInt(500)},
+	}
+	for name, rule := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := validateFaultRule(&rule)
 			require.Error(t, err)
 			require.True(t, domain.IsInvalidInput(err))
 		})

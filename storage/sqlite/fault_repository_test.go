@@ -9,126 +9,179 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFaultRepositoryDeterministicBoundariesAndReset(t *testing.T) {
+func ptr[T any](value T) *T { return &value }
+
+func newFaultRepositoryTest(t *testing.T) (*DB, *FaultRepository) {
+	t.Helper()
 	db, err := NewDB(t.TempDir() + "/fault.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	orgs := NewOrganizationRepository(db)
 	for _, id := range []string{"one", "two"} {
-		require.NoError(t, orgs.Create(&domain.Organization{ID: id, Slug: id, Name: id}))
+		require.NoError(t, NewOrganizationRepository(db).Create(&domain.Organization{ID: id, Slug: id, Name: id}))
 	}
-	repo := NewFaultRepository(db)
-	req := domain.PutFaultScenarioRequest{Enabled: true, Seed: 91, Rules: []domain.FaultRule{{
-		ID: "read", Operation: "GET", Route: "/v1/projects/*", Status: 503, EveryN: 3,
-	}}}
-	_, err = repo.Put("one", req)
-	require.NoError(t, err)
-
-	sequence := func() []bool {
-		got := make([]bool, 8)
-		for i := range got {
-			decision, err := repo.Evaluate("one", "GET", "/v1/projects/example")
-			require.NoError(t, err)
-			got[i] = decision != nil
-		}
-		return got
-	}
-	first := sequence()
-	injected := 0
-	for _, value := range first {
-		if value {
-			injected++
-		}
-	}
-	require.Contains(t, []int{2, 3}, injected, "an eight-call window must contain one injection per three calls")
-	_, err = repo.Reset("one")
-	require.NoError(t, err)
-	require.Equal(t, first, sequence(), "reset with the same seed must replay the sequence")
-
-	decision, err := repo.Evaluate("one", "GET", "/v1/project")
-	require.NoError(t, err)
-	require.Nil(t, decision, "prefix matching must not match a shorter path")
-	scenario, err := repo.Get("one")
-	require.NoError(t, err)
-	require.Equal(t, uint64(8), scenario.Rules[0].CallCount)
-
-	decision, err = repo.Evaluate("two", "GET", "/v1/projects/example")
-	require.NoError(t, err)
-	require.Nil(t, decision, "an organization without a scenario is unaffected")
+	return db, NewFaultRepository(db)
 }
 
-func TestFaultRepositoryCountersAreAtomic(t *testing.T) {
-	db, err := NewDB(t.TempDir() + "/fault.db")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	require.NoError(t, NewOrganizationRepository(db).Create(&domain.Organization{ID: "org", Slug: "org", Name: "org"}))
-	repo := NewFaultRepository(db)
-	_, err = repo.Put("org", domain.PutFaultScenarioRequest{Enabled: true, Rules: []domain.FaultRule{{
-		ID: "all", Operation: "POST", Route: "/v1/projects", Status: 429, EveryN: 1,
-	}}})
-	require.NoError(t, err)
+func testFaultRule(id, org string, priority int) *domain.FaultRule {
+	return &domain.FaultRule{ID: id, OrgID: org, Enabled: true, Priority: priority, Method: ptr("GET"), EveryNth: 1, FailurePercent: 100, StatusCode: ptr(503)}
+}
 
+func TestFaultSelectionOrderingSchedulingAndExhaustion(t *testing.T) {
+	_, repo := newFaultRepositoryTest(t)
+	first := testFaultRule("00000000000000000000000000000001", "one", 1)
+	first.Operation, first.Route = ptr("projects.get"), ptr("/v1/projects/{project}")
+	first.AfterMatches, first.EveryNth, first.MaxTriggers = 1, 2, ptr(uint64(1))
+	second := testFaultRule("00000000000000000000000000000002", "one", 2)
+	second.Operation, second.Route = ptr("projects.get"), ptr("/v1/projects/{project}")
+	require.NoError(t, repo.Create(second))
+	require.NoError(t, repo.Create(first))
+
+	// Near misses on each ANDed dimension select nothing.
+	for _, input := range [][3]string{{"projects.list", "/v1/projects/{project}", "GET"}, {"projects.get", "/v1/projects", "GET"}, {"projects.get", "/v1/projects/{project}", "POST"}} {
+		decision, err := repo.Evaluate("one", input[0], input[1], input[2])
+		require.NoError(t, err)
+		require.Nil(t, decision)
+	}
+
+	// The winning rule counts and shadows lower priority even when it does not trigger.
+	decision, err := repo.Evaluate("one", "projects.get", "/v1/projects/{project}", "GET")
+	require.NoError(t, err)
+	require.Nil(t, decision)
+	decision, err = repo.Evaluate("one", "projects.get", "/v1/projects/{project}", "GET")
+	require.NoError(t, err)
+	require.Nil(t, decision)
+	decision, err = repo.Evaluate("one", "projects.get", "/v1/projects/{project}", "GET")
+	require.NoError(t, err)
+	require.Equal(t, first.ID, decision.RuleID)
+	storedFirst, err := repo.Get("one", first.ID)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), storedFirst.MatchCount)
+	require.Equal(t, uint64(1), storedFirst.TriggerCount)
+	storedSecond, err := repo.Get("one", second.ID)
+	require.NoError(t, err)
+	require.Zero(t, storedSecond.MatchCount)
+
+	// Exhaustion skips the first rule and lets the next candidate win.
+	decision, err = repo.Evaluate("one", "projects.get", "/v1/projects/{project}", "GET")
+	require.NoError(t, err)
+	require.Equal(t, second.ID, decision.RuleID)
+	require.Equal(t, uint64(1), decision.MatchCount)
+}
+
+func TestFaultSelectionUsesIDTieBreakAndIgnoresDisabled(t *testing.T) {
+	_, repo := newFaultRepositoryTest(t)
+	disabled := testFaultRule("00000000000000000000000000000000", "one", 0)
+	disabled.Enabled = false
+	first := testFaultRule("00000000000000000000000000000001", "one", 0)
+	second := testFaultRule("00000000000000000000000000000002", "one", 0)
+	require.NoError(t, repo.Create(second))
+	require.NoError(t, repo.Create(disabled))
+	require.NoError(t, repo.Create(first))
+
+	decision, err := repo.Evaluate("one", "", "", "GET")
+	require.NoError(t, err)
+	require.Equal(t, first.ID, decision.RuleID)
+	stored, err := repo.Get("one", disabled.ID)
+	require.NoError(t, err)
+	require.Zero(t, stored.MatchCount)
+	stored, err = repo.Get("one", second.ID)
+	require.NoError(t, err)
+	require.Zero(t, stored.MatchCount)
+}
+
+func TestFaultCountersAreAtomicAndTenantScoped(t *testing.T) {
+	_, repo := newFaultRepositoryTest(t)
+	rule := testFaultRule("10000000000000000000000000000000", "one", 0)
+	rule.MaxTriggers = ptr(uint64(5))
+	require.NoError(t, repo.Create(rule))
 	const calls = 40
 	var wg sync.WaitGroup
+	triggered := make(chan bool, calls)
 	errs := make(chan error, calls)
 	for i := 0; i < calls; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			decision, err := repo.Evaluate("org", "POST", "/v1/projects")
-			if err == nil && (decision == nil || decision.Status != 429) {
-				err = fmt.Errorf("missing decision")
-			}
+			decision, err := repo.Evaluate("one", "", "", "GET")
 			errs <- err
+			triggered <- decision != nil
 		}()
 	}
 	wg.Wait()
+	close(triggered)
 	close(errs)
 	for err := range errs {
 		require.NoError(t, err)
 	}
-	scenario, err := repo.Get("org")
+	count := 0
+	for value := range triggered {
+		if value {
+			count++
+		}
+	}
+	require.Equal(t, 5, count)
+	stored, err := repo.Get("one", rule.ID)
 	require.NoError(t, err)
-	require.Equal(t, uint64(calls), scenario.Rules[0].CallCount)
-	require.Equal(t, uint64(calls), scenario.Rules[0].InjectedCount)
-}
-
-func TestDisabledFaultScenarioDoesNotAdvanceCounters(t *testing.T) {
-	db, err := NewDB(t.TempDir() + "/fault.db")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	require.NoError(t, NewOrganizationRepository(db).Create(&domain.Organization{ID: "org", Slug: "org", Name: "org"}))
-	repo := NewFaultRepository(db)
-	_, err = repo.Put("org", domain.PutFaultScenarioRequest{Enabled: false, Rules: []domain.FaultRule{{ID: "off", Operation: "GET", Route: "/v1/org", Status: 500, EveryN: 1}}})
-	require.NoError(t, err)
-	decision, err := repo.Evaluate("org", "GET", "/v1/org")
+	require.Equal(t, uint64(5), stored.MatchCount)
+	require.Equal(t, uint64(5), stored.TriggerCount)
+	decision, err := repo.Evaluate("two", "", "", "GET")
 	require.NoError(t, err)
 	require.Nil(t, decision)
-	scenario, err := repo.Get("org")
-	require.NoError(t, err)
-	require.Zero(t, scenario.Rules[0].CallCount)
+	_, err = repo.Get("two", rule.ID)
+	require.True(t, domain.IsNotFound(err))
 }
 
-func TestFaultScenarioPersistsAcrossDatabaseReopen(t *testing.T) {
+func TestFaultDeterminismResetsAndPersistence(t *testing.T) {
+	_, repo := newFaultRepositoryTest(t)
+	rule := testFaultRule("20000000000000000000000000000000", "one", 0)
+	rule.FailurePercent, rule.Seed = 37, -9
+	require.NoError(t, repo.Create(rule))
+	require.Equal(t, uint64(97), deterministicPercent("one", rule.ID, -9, 1))
+	require.Equal(t, uint64(99), deterministicPercent("one", rule.ID, -8, 1))
+	sequence := func() []bool {
+		values := make([]bool, 12)
+		for i := range values {
+			decision, err := repo.Evaluate("one", "", "", "GET")
+			require.NoError(t, err)
+			values[i] = decision != nil
+		}
+		return values
+	}
+	first := sequence()
+	reset, err := repo.Reset("one", rule.ID)
+	require.NoError(t, err)
+	require.Zero(t, reset.MatchCount)
+	require.Equal(t, first, sequence())
+	require.NoError(t, repo.ResetAll("one"))
+}
+
+func TestFaultRuleLimitIsAtomic(t *testing.T) {
+	_, repo := newFaultRepositoryTest(t)
+	for i := 0; i < domain.MaxFaultRules; i++ {
+		rule := testFaultRule(fmt.Sprintf("%032x", i+1), "one", 0)
+		require.NoError(t, repo.Create(rule))
+	}
+	err := repo.Create(testFaultRule("ffffffffffffffffffffffffffffffff", "one", 0))
+	require.ErrorIs(t, err, domain.ErrFaultRuleLimit)
+}
+
+func TestFaultRulePersistsAcrossDatabaseReopen(t *testing.T) {
 	path := t.TempDir() + "/fault.db"
 	db, err := NewDB(path)
 	require.NoError(t, err)
 	require.NoError(t, NewOrganizationRepository(db).Create(&domain.Organization{ID: "org", Slug: "org", Name: "org"}))
 	repo := NewFaultRepository(db)
-	_, err = repo.Put("org", domain.PutFaultScenarioRequest{Name: "persistent", Enabled: true, Seed: 42, Rules: []domain.FaultRule{{
-		ID: "persist", Operation: "DELETE", Route: "/v1/projects/*", Status: 409, EveryN: 2,
-	}}})
-	require.NoError(t, err)
-	_, err = repo.Evaluate("org", "DELETE", "/v1/projects/demo")
+	rule := testFaultRule("30000000000000000000000000000000", "org", 0)
+	require.NoError(t, repo.Create(rule))
+	_, err = repo.Evaluate("org", "", "", "GET")
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
 	db, err = NewDB(path)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	scenario, err := NewFaultRepository(db).Get("org")
+	stored, err := NewFaultRepository(db).Get("org", rule.ID)
 	require.NoError(t, err)
-	require.Equal(t, "persistent", scenario.Name)
-	require.Equal(t, int64(42), scenario.Seed)
-	require.Equal(t, uint64(1), scenario.Rules[0].CallCount)
+	require.Equal(t, uint64(1), stored.MatchCount)
+	require.Equal(t, uint64(1), stored.TriggerCount)
 }
