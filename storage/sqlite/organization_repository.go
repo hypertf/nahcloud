@@ -174,6 +174,19 @@ func (r *OrganizationRepository) Reset(id string) error {
 	if _, err := tx.Exec(`DELETE FROM policies WHERE org_id = ?`, id); err != nil {
 		return fmt.Errorf("failed to delete organization policies: %w", err)
 	}
+	projectFilter := `SELECT id FROM projects WHERE org_id = ?`
+	for _, statement := range []string{
+		`DELETE FROM disk_attachments WHERE project_id IN (` + projectFilter + `)`,
+		`DELETE FROM load_balancers WHERE project_id IN (` + projectFilter + `)`,
+		`DELETE FROM instances WHERE project_id IN (` + projectFilter + `)`,
+		`DELETE FROM disks WHERE project_id IN (` + projectFilter + `)`,
+		`DELETE FROM subnets WHERE project_id IN (` + projectFilter + `)`,
+		`DELETE FROM networks WHERE project_id IN (` + projectFilter + `)`,
+	} {
+		if _, err := tx.Exec(statement, id); err != nil {
+			return fmt.Errorf("failed to clear organization graph: %w", err)
+		}
+	}
 
 	// Projects cascade to all project-scoped resources.
 	if _, err := tx.Exec(`DELETE FROM projects WHERE org_id = ?`, id); err != nil {

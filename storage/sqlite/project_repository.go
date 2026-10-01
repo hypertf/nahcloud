@@ -193,46 +193,32 @@ func (r *ProjectRepository) Update(id string, req domain.UpdateProjectRequest) (
 
 // Delete deletes a project by ID
 func (r *ProjectRepository) Delete(id string) error {
-	// First check if project exists
-	_, err := r.GetByID(id)
+	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
-
-	// Check if project has instances (enforced by FK constraint, but we want specific error)
-	var instanceCount int
-	err = r.db.QueryRow("SELECT COUNT(*) FROM instances WHERE project_id = ?", id).Scan(&instanceCount)
-	if err != nil {
-		return fmt.Errorf("failed to check project instances: %w", err)
+	defer tx.Rollback()
+	var exists string
+	if err = tx.QueryRow(`SELECT id FROM projects WHERE id=?`, id).Scan(&exists); err == sql.ErrNoRows {
+		return domain.NotFoundError("project", id)
+	} else if err != nil {
+		return err
 	}
-
-	if instanceCount > 0 {
-		return domain.InvalidInputError("cannot delete project with existing instances", map[string]interface{}{
-			"project_id":     id,
-			"instance_count": instanceCount,
-		})
+	for _, table := range []string{"instances", "buckets", "networks", "disks", "load_balancers"} {
+		var count int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE project_id=?`, id).Scan(&count); err != nil {
+			return fmt.Errorf("failed to check project resources: %w", err)
+		}
+		if count > 0 {
+			return domain.ConflictError("cannot delete project with existing resources")
+		}
 	}
-
-	// Check if project has buckets
-	var bucketCount int
-	err = r.db.QueryRow("SELECT COUNT(*) FROM buckets WHERE project_id = ?", id).Scan(&bucketCount)
-	if err != nil {
-		return fmt.Errorf("failed to check project buckets: %w", err)
+	if _, err = tx.Exec(`DELETE FROM policy_bindings WHERE target_type='project' AND target_id=?`, id); err != nil {
+		return err
 	}
-
-	if bucketCount > 0 {
-		return domain.InvalidInputError("cannot delete project with existing buckets", map[string]interface{}{
-			"project_id":   id,
-			"bucket_count": bucketCount,
-		})
-	}
-
-	query := `DELETE FROM projects WHERE id = ?`
-
-	_, err = r.db.Exec(query, id)
+	_, err = tx.Exec(`DELETE FROM projects WHERE id=?`, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete project: %w", err)
 	}
-
-	return nil
+	return tx.Commit()
 }

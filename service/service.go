@@ -111,6 +111,7 @@ type GraphRepository interface {
 	CreateSubnet(*domain.Subnet) error
 	GetSubnet(string) (*domain.Subnet, error)
 	ListSubnets(string) ([]*domain.Subnet, error)
+	ListProjectSubnets(string) ([]*domain.Subnet, error)
 	UpdateSubnet(*domain.Subnet) error
 	DeleteSubnet(string) error
 	CreateDisk(*domain.Disk) error
@@ -121,7 +122,6 @@ type GraphRepository interface {
 	CreateAttachment(*domain.DiskAttachment) error
 	GetAttachment(string) (*domain.DiskAttachment, error)
 	ListAttachments(string) ([]*domain.DiskAttachment, error)
-	UpdateAttachment(*domain.DiskAttachment) error
 	DeleteAttachment(string) error
 	CreatePolicy(*domain.Policy) error
 	GetPolicy(string) (*domain.Policy, error)
@@ -131,7 +131,7 @@ type GraphRepository interface {
 	CreateBinding(*domain.PolicyBinding) error
 	GetBinding(string) (*domain.PolicyBinding, error)
 	ListBindings(string) ([]*domain.PolicyBinding, error)
-	UpdateBinding(*domain.PolicyBinding) error
+	ListOrgBindings(string) ([]*domain.PolicyBinding, error)
 	DeleteBinding(string) error
 	CreateLoadBalancer(*domain.LoadBalancer) error
 	GetLoadBalancer(string) (*domain.LoadBalancer, error)
@@ -753,6 +753,12 @@ func (s *Service) CreateInstance(req domain.CreateInstanceRequest) (*domain.Inst
 		MemoryMB:  req.MemoryMB,
 		Image:     req.Image,
 		Status:    status,
+		SubnetID:  req.SubnetID,
+	}
+	if req.SubnetID != nil {
+		if err := s.validateSubnetForInstance(*req.SubnetID, req.ProjectID, req.Region); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := s.instanceRepo.Create(instance); err != nil {
@@ -791,6 +797,9 @@ func (s *Service) UpdateInstance(id string, req domain.UpdateInstanceRequest) (*
 				"solution":        "Remove and re-add the resource, or use 'terraform taint' to force recreation",
 			},
 		)
+	}
+	if req.SubnetID != nil && (current.SubnetID == nil || *req.SubnetID != *current.SubnetID) {
+		return nil, domain.InvalidInputError("subnet_id is immutable; recreate the instance to change it", nil)
 	}
 
 	if req.Name != nil {

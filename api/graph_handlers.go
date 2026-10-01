@@ -42,10 +42,10 @@ func (h *Handler) graphCollection(kind string) http.HandlerFunc {
 					result, err = h.service.ListAttachments(parent.ID)
 				}
 			case "policy":
-				result, err = h.service.ListPolicies(org.ID, projectID(project))
+				result, err = h.service.ListPolicies(org.ID, "")
 			case "binding":
 				var parent *domain.Policy
-				parent, err = h.scopedPolicy(r, org, project)
+				parent, err = h.scopedPolicy(r, org)
 				if err == nil {
 					result, err = h.service.ListBindings(parent.ID)
 				}
@@ -96,12 +96,12 @@ func (h *Handler) graphCollection(kind string) http.HandlerFunc {
 		case "policy":
 			var req domain.CreatePolicyRequest
 			if err = h.decodeJSON(r, &req); err == nil {
-				result, err = h.service.CreatePolicy(org.ID, projectID(project), req)
+				result, err = h.service.CreatePolicy(org.ID, "", req)
 			}
 		case "binding":
 			var req domain.CreatePolicyBindingRequest
 			var parent *domain.Policy
-			if parent, err = h.scopedPolicy(r, org, project); err == nil {
+			if parent, err = h.scopedPolicy(r, org); err == nil {
 				if err = h.decodeJSON(r, &req); err == nil {
 					result, err = h.service.CreateBinding(parent.ID, req)
 				}
@@ -176,12 +176,12 @@ func (h *Handler) graphItem(kind string) http.HandlerFunc {
 			}
 		case "policy":
 			current, err = h.service.GetPolicy(id)
-			if err == nil && !policyMatches(current.(*domain.Policy), org, project) {
+			if err == nil && current.(*domain.Policy).OrgID != org.ID {
 				err = domain.NotFoundError("policy", id)
 			}
 		case "binding":
 			var parent *domain.Policy
-			parent, err = h.scopedPolicy(r, org, project)
+			parent, err = h.scopedPolicy(r, org)
 			if err == nil {
 				current, err = h.service.GetBinding(id)
 				if err == nil && current.(*domain.PolicyBinding).PolicyID != parent.ID {
@@ -254,20 +254,10 @@ func (h *Handler) graphItem(kind string) http.HandlerFunc {
 			if err = h.decodeJSON(r, &req); err == nil {
 				result, err = h.service.UpdateDisk(id, req)
 			}
-		case "attachment":
-			var req domain.UpdateDiskAttachmentRequest
-			if err = h.decodeJSON(r, &req); err == nil {
-				result, err = h.service.UpdateAttachment(id, req)
-			}
 		case "policy":
 			var req domain.UpdatePolicyRequest
 			if err = h.decodeJSON(r, &req); err == nil {
 				result, err = h.service.UpdatePolicy(id, req)
-			}
-		case "binding":
-			var req domain.UpdatePolicyBindingRequest
-			if err = h.decodeJSON(r, &req); err == nil {
-				result, err = h.service.UpdateBinding(id, req)
 			}
 		case "load-balancer":
 			var req domain.UpdateLoadBalancerRequest
@@ -288,15 +278,6 @@ func (h *Handler) graphItem(kind string) http.HandlerFunc {
 	}
 }
 
-func projectID(p *domain.Project) string {
-	if p == nil {
-		return ""
-	}
-	return p.ID
-}
-func policyMatches(v *domain.Policy, org *domain.Organization, project *domain.Project) bool {
-	return v.OrgID == org.ID && v.ProjectID == projectID(project)
-}
 func (h *Handler) scopedNetwork(r *http.Request, p *domain.Project) (*domain.Network, error) {
 	id := mux.Vars(r)["network_id"]
 	v, err := h.service.GetNetwork(id)
@@ -321,11 +302,30 @@ func (h *Handler) scopedLoadBalancer(r *http.Request, p *domain.Project) (*domai
 	}
 	return v, err
 }
-func (h *Handler) scopedPolicy(r *http.Request, o *domain.Organization, p *domain.Project) (*domain.Policy, error) {
+func (h *Handler) scopedPolicy(r *http.Request, o *domain.Organization) (*domain.Policy, error) {
 	id := mux.Vars(r)["policy_id"]
 	v, err := h.service.GetPolicy(id)
-	if err == nil && !policyMatches(v, o, p) {
+	if err == nil && v.OrgID != o.ID {
 		err = domain.NotFoundError("policy", id)
 	}
 	return v, err
+}
+
+func (h *Handler) EvaluatePolicy(w http.ResponseWriter, r *http.Request) {
+	org, err := h.resolveOrg(r)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	var req domain.PolicyEvaluationRequest
+	if err = h.decodeJSON(r, &req); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	result, err := h.service.EvaluatePolicy(org.ID, req)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, result)
 }
