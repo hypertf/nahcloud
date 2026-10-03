@@ -116,6 +116,7 @@ func TestMigrateInterruptedV01AfterAllColumnsBeforeBackfill(t *testing.T) {
 		`ALTER TABLE projects ADD COLUMN slug TEXT`,
 		`ALTER TABLE buckets ADD COLUMN project_id TEXT`,
 		`ALTER TABLE metadata ADD COLUMN org_id TEXT`,
+		`UPDATE projects SET org_id='partial-org'`,
 	})
 	require.NoError(t, raw.Close())
 
@@ -126,6 +127,9 @@ func TestMigrateInterruptedV01AfterAllColumnsBeforeBackfill(t *testing.T) {
 		require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE `+column+` IS NULL`).Scan(&nulls))
 		require.Zero(t, nulls)
 	}
+	var projectOrg string
+	require.NoError(t, db.QueryRow(`SELECT org_id FROM projects WHERE id='legacy-project'`).Scan(&projectOrg))
+	require.Equal(t, "partial-org", projectOrg, "backfilling a missing slug must preserve valid ownership")
 	assertV2OwnershipConstraints(t, db)
 }
 

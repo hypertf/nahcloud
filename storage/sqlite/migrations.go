@@ -127,7 +127,9 @@ func backfillV2Ownership(tx *sql.Tx) error {
 	} else if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`UPDATE projects SET org_id=?, slug=COALESCE(slug,name)
+	if _, err = tx.Exec(`UPDATE projects SET
+		org_id=CASE WHEN org_id IS NULL OR NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id=projects.org_id) THEN ? ELSE org_id END,
+		slug=COALESCE(slug,name)
 		WHERE org_id IS NULL OR slug IS NULL OR NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id=projects.org_id)`, orgID); err != nil {
 		return err
 	}
