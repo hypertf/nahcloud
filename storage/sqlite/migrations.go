@@ -82,9 +82,9 @@ func migrateV2(tx *sql.Tx) error {
 
 	var unowned int
 	if err = tx.QueryRow(`SELECT
-		(SELECT COUNT(*) FROM projects WHERE org_id IS NULL OR slug IS NULL) +
-		(SELECT COUNT(*) FROM buckets WHERE project_id IS NULL) +
-		(SELECT COUNT(*) FROM metadata WHERE org_id IS NULL)`).Scan(&unowned); err != nil {
+		(SELECT COUNT(*) FROM projects p WHERE org_id IS NULL OR slug IS NULL OR NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id=p.org_id)) +
+		(SELECT COUNT(*) FROM buckets b WHERE project_id IS NULL OR NOT EXISTS (SELECT 1 FROM projects p WHERE p.id=b.project_id)) +
+		(SELECT COUNT(*) FROM metadata m WHERE org_id IS NULL OR NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id=m.org_id))`).Scan(&unowned); err != nil {
 		return err
 	}
 	if unowned > 0 {
@@ -127,10 +127,17 @@ func backfillV2Ownership(tx *sql.Tx) error {
 	} else if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`UPDATE projects SET org_id=COALESCE(org_id,?), slug=COALESCE(slug,name) WHERE org_id IS NULL OR slug IS NULL`, orgID); err != nil {
+	if _, err = tx.Exec(`UPDATE projects SET
+		org_id=CASE WHEN org_id IS NULL OR NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id=projects.org_id) THEN ? ELSE org_id END,
+		slug=COALESCE(slug,name)
+		WHERE org_id IS NULL OR slug IS NULL OR NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id=projects.org_id)`, orgID); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`UPDATE metadata SET org_id=? WHERE org_id IS NULL`, orgID); err != nil {
+	if _, err = tx.Exec(`UPDATE metadata SET org_id=?
+		WHERE org_id IS NULL OR NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id=metadata.org_id)`, orgID); err != nil {
+		return err
+	}
+	if err = recoverOrphanBucketProjects(tx); err != nil {
 		return err
 	}
 	var projectID string
@@ -145,6 +152,31 @@ func backfillV2Ownership(tx *sql.Tx) error {
 	}
 	_, err = tx.Exec(`UPDATE buckets SET project_id=? WHERE project_id IS NULL`, projectID)
 	return err
+}
+
+func recoverOrphanBucketProjects(tx *sql.Tx) error {
+	var count int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM buckets b
+		WHERE b.project_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.id=b.project_id)`).Scan(&count); err != nil || count == 0 {
+		return err
+	}
+	for _, statement := range []string{
+		`CREATE TEMP TABLE migration_recovery_org(id TEXT NOT NULL, slug TEXT NOT NULL)`,
+		`INSERT INTO migration_recovery_org VALUES(lower(hex(randomblob(16))), lower(hex(randomblob(16))))`,
+		`INSERT INTO organizations(id,slug,name)
+			SELECT id,slug,'Recovered legacy resources' FROM migration_recovery_org`,
+		`INSERT INTO projects(id,org_id,slug,name)
+			SELECT orphan.project_id,recovery.id,lower(hex(randomblob(16))),lower(hex(randomblob(16)))
+			FROM (SELECT DISTINCT b.project_id FROM buckets b
+				WHERE b.project_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.id=b.project_id)) orphan
+			CROSS JOIN migration_recovery_org recovery`,
+		`DROP TABLE migration_recovery_org`,
+	} {
+		if _, err := tx.Exec(statement); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func rebuildV2Tables(tx *sql.Tx) error {
