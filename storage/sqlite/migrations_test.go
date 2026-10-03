@@ -129,6 +129,40 @@ func TestMigrateInterruptedV01AfterAllColumnsBeforeBackfill(t *testing.T) {
 	assertV2OwnershipConstraints(t, db)
 }
 
+func TestMigrateInterruptedV01QuarantinesOrphanBucketProject(t *testing.T) {
+	path := t.TempDir() + "/interrupted-orphan-bucket.db"
+	raw := rawDB(t, path)
+	execAll(t, raw, v01Schema())
+	execAll(t, raw, []string{
+		`CREATE TABLE organizations(id TEXT PRIMARY KEY,slug TEXT UNIQUE NOT NULL,name TEXT NOT NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`INSERT INTO organizations(id,slug,name) VALUES('existing-org','existing','Existing')`,
+		`ALTER TABLE projects ADD COLUMN org_id TEXT`,
+		`ALTER TABLE projects ADD COLUMN slug TEXT`,
+		`ALTER TABLE buckets ADD COLUMN project_id TEXT`,
+		`ALTER TABLE metadata ADD COLUMN org_id TEXT`,
+		`UPDATE projects SET org_id='existing-org',slug=name`,
+		`UPDATE metadata SET org_id='existing-org'`,
+		`UPDATE buckets SET project_id='deleted-project'`,
+	})
+	require.NoError(t, raw.Close())
+
+	db := assertLatest(t, path)
+	defer db.Close()
+	var projectID, recoveryOrgID string
+	require.NoError(t, db.QueryRow(`SELECT project_id FROM buckets WHERE id='legacy-bucket'`).Scan(&projectID))
+	require.Equal(t, "deleted-project", projectID)
+	require.NoError(t, db.QueryRow(`SELECT org_id FROM projects WHERE id=?`, projectID).Scan(&recoveryOrgID))
+	require.NotEqual(t, "existing-org", recoveryOrgID, "orphaned data must not be exposed to an unrelated tenant")
+	var objectCount, credentialCount int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM objects WHERE id='legacy-object' AND bucket_id='legacy-bucket'`).Scan(&objectCount))
+	require.Equal(t, 1, objectCount)
+	require.NoError(t, db.QueryRow(`SELECT
+		(SELECT COUNT(*) FROM api_keys WHERE org_id=?) +
+		(SELECT COUNT(*) FROM sessions WHERE org_id=?)`, recoveryOrgID, recoveryOrgID).Scan(&credentialCount))
+	require.Zero(t, credentialCount, "the quarantine tenant must not be directly accessible")
+	assertV2OwnershipConstraints(t, db)
+}
+
 func assertV2OwnershipConstraints(t *testing.T, db *DB) {
 	t.Helper()
 	for _, item := range []struct{ table, column, parent string }{
