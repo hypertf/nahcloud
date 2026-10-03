@@ -26,6 +26,7 @@ func newTestService(t *testing.T) (*Service, *sqlite.DB) {
 		sqlite.NewMetadataRepository(db),
 		sqlite.NewBucketRepository(db),
 		sqlite.NewObjectRepository(db),
+		sqlite.NewGraphRepository(db),
 	)
 
 	t.Cleanup(func() {
@@ -196,5 +197,75 @@ func TestDeletingBucketsCascadesObjectsDuringConcurrentRecreation(t *testing.T) 
 	close(errors)
 	for err := range errors {
 		require.NoError(t, err)
+	}
+}
+
+func TestGraphUniquenessAndCascades(t *testing.T) {
+	svc, db := newTestService(t)
+	org, err := svc.CreateOrganization(domain.CreateOrganizationRequest{Slug: "graph-org", Name: "Graph Org"})
+	require.NoError(t, err)
+	project, err := svc.CreateProject(org.ID, domain.CreateProjectRequest{Slug: "graph", Name: "Graph"})
+	require.NoError(t, err)
+	instance, err := svc.CreateInstance(domain.CreateInstanceRequest{ProjectID: project.ID, Name: "target", Region: domain.RegionUSEast1, CPU: 1, MemoryMB: 512, Image: "test"})
+	require.NoError(t, err)
+
+	const contenders = 12
+	var wg sync.WaitGroup
+	results := make(chan error, contenders)
+	for i := 0; i < contenders; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := svc.CreateNetwork(project.ID, domain.CreateNetworkRequest{Name: "private", Region: domain.RegionUSEast1})
+			results <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+	created, conflicts := 0, 0
+	for err := range results {
+		if err == nil {
+			created++
+		} else if domain.IsAlreadyExists(err) {
+			conflicts++
+		} else {
+			require.NoError(t, err)
+		}
+	}
+	require.Equal(t, 1, created)
+	require.Equal(t, contenders-1, conflicts)
+	networks, err := svc.ListNetworks(project.ID)
+	require.NoError(t, err)
+	require.Len(t, networks, 1)
+	subnet, err := svc.CreateSubnet(networks[0], domain.CreateSubnetRequest{Name: "apps", CIDR: "10.0.2.0/24"})
+	require.NoError(t, err)
+	require.True(t, domain.IsConflict(svc.DeleteNetwork(networks[0].ID)))
+
+	disk, err := svc.CreateDisk(project.ID, domain.CreateDiskRequest{Name: "data", Region: domain.RegionUSEast1, Type: "ssd", SizeGB: 10})
+	require.NoError(t, err)
+	attachment, err := svc.CreateAttachment(disk, domain.CreateDiskAttachmentRequest{InstanceID: instance.ID, Device: "vdb"})
+	require.NoError(t, err)
+	bound, err := svc.CreateInstance(domain.CreateInstanceRequest{ProjectID: project.ID, Name: "bound", Region: domain.RegionUSEast1, CPU: 1, MemoryMB: 512, Image: "test", SubnetID: &subnet.ID})
+	require.NoError(t, err)
+	lb, err := svc.CreateLoadBalancer(project.ID, domain.CreateLoadBalancerRequest{Name: "front", SubnetID: subnet.ID, Protocol: "http", Port: 80, Algorithm: "round_robin", HealthCheckPath: "/health"})
+	require.NoError(t, err)
+	backend, err := svc.CreateBackend(lb, domain.CreateLoadBalancerBackendRequest{InstanceID: bound.ID, Port: 8080, Weight: 1})
+	require.NoError(t, err)
+	require.NoError(t, svc.DeleteInstance(instance.ID))
+	_, err = svc.GetAttachment(attachment.ID)
+	require.True(t, domain.IsNotFound(err))
+	require.NoError(t, svc.DeleteInstance(bound.ID))
+	_, err = svc.GetBackend(backend.ID)
+	require.True(t, domain.IsNotFound(err))
+
+	policy, err := svc.CreatePolicy(org.ID, "", domain.CreatePolicyRequest{Name: "baseline", Effect: "allow", Actions: []string{"read"}})
+	require.NoError(t, err)
+	_, err = svc.CreateBinding(policy.ID, domain.CreatePolicyBindingRequest{PrincipalType: "organization", PrincipalID: org.ID, TargetType: "project", TargetID: project.ID})
+	require.NoError(t, err)
+	require.NoError(t, svc.ResetOrganization(org.ID))
+	for _, table := range []string{"networks", "disks", "policies", "policy_bindings"} {
+		var count int
+		require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM `+table).Scan(&count))
+		require.Zero(t, count, table)
 	}
 }

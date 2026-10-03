@@ -6,12 +6,14 @@ import (
 
 // Error codes
 const (
-	ErrorCodeNotFound           = "NOT_FOUND"
-	ErrorCodeAlreadyExists      = "ALREADY_EXISTS"
-	ErrorCodeInvalidInput       = "INVALID_INPUT"
+	ErrorCodeNotFound            = "NOT_FOUND"
+	ErrorCodeAlreadyExists       = "ALREADY_EXISTS"
+	ErrorCodeInvalidInput        = "INVALID_INPUT"
 	ErrorCodeForeignKeyViolation = "FOREIGN_KEY_VIOLATION"
-	ErrorCodeInternalError = "INTERNAL_ERROR"
-	ErrorCodeUnauthorized  = "UNAUTHORIZED"
+	ErrorCodeInternalError       = "INTERNAL_ERROR"
+	ErrorCodeUnauthorized        = "UNAUTHORIZED"
+	ErrorCodeConflict            = "CONFLICT"
+	ErrorCodeLimitExceeded       = "LIMIT_EXCEEDED"
 )
 
 // NahError represents a domain error with structured information
@@ -79,6 +81,9 @@ func UnauthorizedError(message string) *NahError {
 	return NewError(ErrorCodeUnauthorized, message)
 }
 
+func ConflictError(message string) *NahError      { return NewError(ErrorCodeConflict, message) }
+func LimitExceededError(message string) *NahError { return NewError(ErrorCodeLimitExceeded, message) }
+
 // IsNotFound checks if error is a not found error
 func IsNotFound(err error) bool {
 	if nahErr, ok := err.(*NahError); ok {
@@ -117,4 +122,10 @@ func IsUnauthorized(err error) bool {
 		return nahErr.Code == ErrorCodeUnauthorized
 	}
 	return false
+}
+
+func IsConflict(err error) bool { e, ok := err.(*NahError); return ok && e.Code == ErrorCodeConflict }
+func IsLimitExceeded(err error) bool {
+	e, ok := err.(*NahError)
+	return ok && e.Code == ErrorCodeLimitExceeded
 }

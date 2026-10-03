@@ -3,8 +3,10 @@ package web
 // Templates
 
 const errorTemplate = `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Error - NahCloud</title>
     <link rel="icon" type="image/png" href="/static/logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -22,15 +24,17 @@ const errorTemplate = `<!DOCTYPE html>
 </html>`
 
 const baseTemplate = `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>NahCloud</title>
     <link rel="icon" type="image/png" href="/static/logo.png">
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             document.body.addEventListener('htmx:beforeSwap', function(evt) {
-                if (evt.detail.xhr.status === 400 || evt.detail.xhr.status === 500) {
+                if (evt.detail.xhr.status >= 400 && evt.detail.xhr.status < 600) {
                     evt.detail.shouldSwap = true;
                     evt.detail.isError = false;
                 }
@@ -148,6 +152,12 @@ const baseTemplate = `<!DOCTYPE html>
                     </svg>
                     Storage
                 </a>
+                <a href="/cloud" class="sidebar-link {{if eq .Context.Section "cloud"}}active{{end}}">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 6a2 2 0 11-4 0 2 2 0 014 0zm12 0a2 2 0 11-4 0 2 2 0 014 0zM8 18a2 2 0 11-4 0 2 2 0 014 0zm12 0a2 2 0 11-4 0 2 2 0 014 0zM7.5 7.5l9 9m0-9l-9 9"></path>
+                    </svg>
+                    Cloud Graph
+                </a>
                 {{end}}
                 <a href="/projects" class="sidebar-link {{if eq .Context.Section "projects"}}active{{end}}">
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -180,8 +190,8 @@ const baseTemplate = `<!DOCTYPE html>
         </main>
     </div>
 
-    <div id="modal" class="fixed inset-0 z-50 hidden items-start justify-center bg-slate-950/60 px-4 pt-16 backdrop-blur-sm" onclick="if(event.target === this) this.style.display='none'">
-        <div class="w-full max-w-lg overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-2xl" onclick="event.stopPropagation()">
+    <div id="modal" aria-hidden="true" class="fixed inset-0 z-50 hidden items-start justify-center bg-slate-950/60 px-4 pt-8 sm:pt-16 backdrop-blur-sm" onclick="if(event.target === this) closeModal()">
+        <div id="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1" class="max-h-[calc(100vh-4rem)] w-full max-w-lg overflow-y-auto rounded-[24px] border border-slate-200 bg-white shadow-2xl" onclick="event.stopPropagation()">
             <div id="modal-content"></div>
         </div>
     </div>
@@ -191,10 +201,37 @@ const baseTemplate = `<!DOCTYPE html>
     </style>
 
     <script>
+        var modalOpener = null;
+        function closeModal() {
+            var modal = document.getElementById('modal');
+            modal.style.display = 'none';
+            modal.setAttribute('aria-hidden', 'true');
+            document.getElementById('modal-content').innerHTML = '';
+            if (modalOpener) modalOpener.focus();
+        }
+        document.body.addEventListener('htmx:beforeRequest', function(e) {
+            if (e.detail.target && e.detail.target.id === 'modal-content') modalOpener = e.detail.elt;
+        });
         document.body.addEventListener('htmx:afterSwap', function(e) {
             if (e.target.id === 'modal-content') {
-                document.getElementById('modal').style.display = 'block';
+                var modal = document.getElementById('modal');
+                modal.style.display = 'block';
+                modal.setAttribute('aria-hidden', 'false');
+                var first = e.target.querySelector('input:not([type="hidden"]), select, textarea, button');
+                (first || document.getElementById('modal-panel')).focus();
             }
+            if (e.target.id === 'content') {
+                closeModal();
+            }
+        });
+        document.getElementById('modal').addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') { e.preventDefault(); closeModal(); return; }
+            if (e.key !== 'Tab') return;
+            var controls = Array.from(this.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'));
+            if (!controls.length) return;
+            var first = controls[0], last = controls[controls.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
         });
     </script>
 </body>
@@ -342,7 +379,7 @@ const projectsTemplate = `{{define "content"}}
                 <td class="px-6 py-4 border-b border-slate-100">
                     <div class="flex gap-2">
                         <button class="btn btn-secondary btn-sm" hx-get="/projects/{{.Slug}}/edit" hx-target="#modal-content">Edit</button>
-                        <button class="btn btn-danger btn-sm" hx-delete="/projects/{{.Slug}}" hx-target="closest tr" hx-confirm="Are you sure you want to delete this project?">Delete</button>
+                        <button class="btn btn-danger btn-sm" hx-delete="/projects/{{.Slug}}" hx-target="closest tr" hx-confirm="Delete this project? Deletion is restricted while any instance, bucket, network, disk, or load balancer remains. Remove those resources first.">Delete</button>
                     </div>
                 </td>
             </tr>
@@ -459,7 +496,7 @@ const instancesTemplate = `{{define "content"}}
                 <td class="px-6 py-4 border-b border-slate-100">
                     <div class="flex gap-2">
                         <button class="btn btn-secondary btn-sm" hx-get="/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}/edit" hx-target="#modal-content">Edit</button>
-                        <button class="btn btn-danger btn-sm" hx-delete="/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}" hx-target="closest tr" hx-confirm="Are you sure you want to delete this instance?">Delete</button>
+                        <button class="btn btn-danger btn-sm" hx-delete="/projects/{{$.Context.Project.Slug}}/instances/{{.ID}}" hx-target="closest tr" hx-confirm="Delete this instance? Its disk attachment edges, load-balancer backends, and policy bindings targeting it will be deleted. The disks themselves survive.">Delete</button>
                     </div>
                 </td>
             </tr>

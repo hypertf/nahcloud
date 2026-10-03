@@ -21,13 +21,28 @@ func NewInstanceRepository(db *DB) *InstanceRepository {
 
 // Create creates a new instance
 func (r *InstanceRepository) Create(instance *domain.Instance) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err = checkProjectNodeLimit(tx, "instances", instance.ProjectID); err != nil {
+		return err
+	}
+	if instance.SubnetID != nil {
+		var project, region string
+		err = tx.QueryRow(`SELECT s.project_id,n.region FROM subnets s JOIN networks n ON n.id=s.network_id WHERE s.id=?`, *instance.SubnetID).Scan(&project, &region)
+		if err != nil || project != instance.ProjectID || region != instance.Region {
+			return domain.NotFoundError("subnet", *instance.SubnetID)
+		}
+	}
 	now := time.Now()
 	instance.CreatedAt = now
 	instance.UpdatedAt = now
 
-	query := `INSERT INTO instances (id, project_id, name, region, cpu, memory_mb, image, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO instances (id, project_id, name, region, cpu, memory_mb, image, status, subnet_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-	_, err := r.db.Exec(query, instance.ID, instance.ProjectID, instance.Name, instance.Region, instance.CPU, instance.MemoryMB, instance.Image, instance.Status, instance.CreatedAt, instance.UpdatedAt)
+	_, err = tx.Exec(query, instance.ID, instance.ProjectID, instance.Name, instance.Region, instance.CPU, instance.MemoryMB, instance.Image, instance.Status, instance.SubnetID, instance.CreatedAt, instance.UpdatedAt)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed: instances.project_id, instances.name") {
 			return domain.AlreadyExistsError("instance", "name", instance.Name)
@@ -38,13 +53,13 @@ func (r *InstanceRepository) Create(instance *domain.Instance) error {
 		return fmt.Errorf("failed to create instance: %w", err)
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 // GetByID retrieves an instance by ID
 func (r *InstanceRepository) GetByID(id string) (*domain.Instance, error) {
 	instance := &domain.Instance{}
-	query := `SELECT id, project_id, name, region, cpu, memory_mb, image, status, created_at, updated_at FROM instances WHERE id = ?`
+	query := `SELECT id, project_id, name, region, cpu, memory_mb, image, status, subnet_id, created_at, updated_at FROM instances WHERE id = ?`
 
 	err := r.db.QueryRow(query, id).Scan(
 		&instance.ID,
@@ -55,6 +70,7 @@ func (r *InstanceRepository) GetByID(id string) (*domain.Instance, error) {
 		&instance.MemoryMB,
 		&instance.Image,
 		&instance.Status,
+		&instance.SubnetID,
 		&instance.CreatedAt,
 		&instance.UpdatedAt,
 	)
@@ -73,7 +89,7 @@ func (r *InstanceRepository) List(opts domain.InstanceListOptions) ([]*domain.In
 	var instances []*domain.Instance
 	var args []interface{}
 
-	query := `SELECT id, project_id, name, region, cpu, memory_mb, image, status, created_at, updated_at FROM instances`
+	query := `SELECT id, project_id, name, region, cpu, memory_mb, image, status, subnet_id, created_at, updated_at FROM instances`
 	var conditions []string
 
 	if opts.ProjectID != "" {
@@ -119,6 +135,7 @@ func (r *InstanceRepository) List(opts domain.InstanceListOptions) ([]*domain.In
 			&instance.MemoryMB,
 			&instance.Image,
 			&instance.Status,
+			&instance.SubnetID,
 			&instance.CreatedAt,
 			&instance.UpdatedAt,
 		)
@@ -162,7 +179,7 @@ func (r *InstanceRepository) Update(id string, req domain.UpdateInstanceRequest)
 	existing.UpdatedAt = time.Now()
 
 	query := `UPDATE instances SET name = ?, cpu = ?, memory_mb = ?, image = ?, status = ?, updated_at = ? WHERE id = ?`
-	
+
 	_, err = r.db.Exec(query, existing.Name, existing.CPU, existing.MemoryMB, existing.Image, existing.Status, existing.UpdatedAt, id)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed: instances.project_id, instances.name") {
@@ -176,18 +193,23 @@ func (r *InstanceRepository) Update(id string, req domain.UpdateInstanceRequest)
 
 // Delete deletes an instance by ID
 func (r *InstanceRepository) Delete(id string) error {
-	// First check if instance exists
-	_, err := r.GetByID(id)
+	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
-
-	query := `DELETE FROM instances WHERE id = ?`
-	
-	_, err = r.db.Exec(query, id)
+	defer tx.Rollback()
+	var exists string
+	if err = tx.QueryRow(`SELECT id FROM instances WHERE id=?`, id).Scan(&exists); err == sql.ErrNoRows {
+		return domain.NotFoundError("instance", id)
+	} else if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM policy_bindings WHERE target_type='instance' AND target_id=?`, id); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`DELETE FROM instances WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete instance: %w", err)
 	}
-
-	return nil
+	return tx.Commit()
 }

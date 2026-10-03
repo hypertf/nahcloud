@@ -12,13 +12,16 @@ import (
 // Handler handles HTTP requests
 type Handler struct {
 	service *service.Service
+	faults  *service.FaultService
 }
 
 // NewHandler creates a new handler
-func NewHandler(service *service.Service) *Handler {
-	return &Handler{
-		service: service,
+func NewHandler(svc *service.Service, faults ...*service.FaultService) *Handler {
+	h := &Handler{service: svc}
+	if len(faults) > 0 {
+		h.faults = faults[0]
 	}
+	return h
 }
 
 // writeJSON writes a JSON response
@@ -47,6 +50,12 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 		message = err.Error()
 	} else if domain.IsUnauthorized(err) {
 		status = http.StatusUnauthorized
+		message = err.Error()
+	} else if domain.IsConflict(err) {
+		status = http.StatusConflict
+		message = err.Error()
+	} else if domain.IsLimitExceeded(err) {
+		status = http.StatusTooManyRequests
 		message = err.Error()
 	}
 
