@@ -2,7 +2,7 @@ module github.com/hypertf/nahcloud
 
 go 1.23.0
 
-toolchain go1.24.3
+toolchain go1.26.10
 
 require (
 	github.com/google/uuid v1.6.0
